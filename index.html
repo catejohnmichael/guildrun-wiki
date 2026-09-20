@@ -44,6 +44,7 @@ ph::before{content:"⟨"}ph::after{content:"⟩"}
 #tip .tstats{color:#cfe3c9;margin:3px 0}
 #tip .tdesc{color:#c7ccd8;margin-top:4px}
 #tip .r0,#tip .r1{color:#9fb0c3}#tip .r2{color:#63b3e6}#tip .r3{color:#b98be6}#tip .r4{color:#e6b34d}#tip .r5{color:#e6685a}
+#tip .r6{color:#f0952e}#tip .r7{color:#c98b8b}#tip .r8,#tip .r9,#tip .r10,#tip .r11{color:#b6a15e}#tip .r12,#tip .r13,#tip .r14{color:#9db9c9}
 img.ic{width:22px;height:22px;vertical-align:middle;border-radius:3px;background:#0c0e12;object-fit:contain}
 img.ic-lg{width:34px;height:34px;vertical-align:middle;border-radius:4px;background:#0c0e12;object-fit:contain}
 .chip{display:inline-flex;align-items:center;gap:5px;background:#22252d;border:1px solid #3a3f4a;border-radius:5px;padding:2px 7px 2px 3px;margin:3px 4px 0 0;font-size:12px;white-space:nowrap}
@@ -59,6 +60,7 @@ details.rawfx>summary{cursor:pointer;color:#7f8aa0;font-size:12px;user-select:no
 details.rawfx>summary:hover{color:#9fb0d0}
 details.rawfx[open]>summary{color:#9fb0d0;margin-bottom:3px}
 .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.chgent{margin:12px 0 2px}.chg{margin:2px 0 8px 14px;padding:0;font-size:13px}.chg li{margin:1px 0}
 @media (max-width:640px){
   main{padding:10px 12px}
   h1{font-size:22px}h2{margin-top:20px}
@@ -98,14 +100,18 @@ function revealHash(){
 }
 window.addEventListener('load',revealHash);
 window.addEventListener('hashchange',revealHash);
-// ---- hover tooltip (item/relic stats, game-style) ----
+// ---- hover tooltip (game-style cards for items, relics, heroes, abilities, rankmods) ----
 var TIP=null;
+var TIPSRC=[['data-it','IDATA'],['data-rl','RDATA'],['data-hero','HDATA'],['data-rm','RMDATA'],['data-ab','ADATA']];
+var TIPSEL='[data-it],[data-rl],[data-hero],[data-rm],[data-ab]';
 function tipFor(el){
-  var it=el.getAttribute('data-it'), rl=el.getAttribute('data-rl');
-  var d=it?(window.IDATA&&IDATA[it]):(rl?(window.RDATA&&RDATA[rl]):null);
+  var d=null,key=null;
+  for(var i=0;i<TIPSRC.length;i++){var v=el.getAttribute(TIPSRC[i][0]);
+    if(v&&window[TIPSRC[i][1]]){d=window[TIPSRC[i][1]][v]; key=TIPSRC[i][0]+v; if(d)break;}}
   if(!d) return null;
+  el.__tipkey=key;
   var h='<div class="thead">'+(d.ic?('<img src="'+d.ic+'">'):'')+'<span>'+d.n+'</span></div>';
-  h+='<div class="trar r'+(d.rr||0)+'">'+(d.r||'')+(d.c?(' · cost '+d.c):'')+'</div>';
+  if(d.r||d.c) h+='<div class="trar r'+(d.rr==null?0:d.rr)+'">'+(d.r||'')+(d.c?(' · cost '+d.c):'')+'</div>';
   if(d.s) h+='<div class="tstats">'+d.s+'</div>';
   if(d.d) h+='<div class="tdesc">'+d.d+'</div>';
   return h;
@@ -118,22 +124,22 @@ function placeTip(e){
   TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 }
 document.addEventListener('mouseover',function(e){
-  var c=e.target.closest('[data-it],[data-rl]'); if(!c)return;
+  var c=e.target.closest(TIPSEL); if(!c)return;
   var html=tipFor(c); if(!html)return;
   if(!TIP){TIP=document.createElement('div');TIP.id='tip';document.body.appendChild(TIP);}
   TIP.innerHTML=html;TIP.style.display='block';placeTip(e);
 });
 document.addEventListener('mousemove',placeTip);
 document.addEventListener('mouseout',function(e){
-  if(e.target.closest('[data-it],[data-rl]')&&TIP)TIP.style.display='none';
+  if(e.target.closest(TIPSEL)&&TIP)TIP.style.display='none';
 });
-// ---- tap support (touch devices have no hover) ----
+// ---- tap support (touch devices have no hover); links navigate, non-link chips pop a card ----
 document.addEventListener('click',function(e){
-  var c=e.target.closest('[data-it],[data-rl]');
-  if(!c||c.closest('a')){if(TIP&&!e.target.closest('[data-it],[data-rl]'))TIP.style.display='none';return;}
+  var c=e.target.closest(TIPSEL);
+  if(!c||c.closest('a')){if(TIP&&!e.target.closest(TIPSEL))TIP.style.display='none';return;}
   var html=tipFor(c); if(!html)return;
   if(!TIP){TIP=document.createElement('div');TIP.id='tip';document.body.appendChild(TIP);}
-  var id=c.getAttribute('data-it')||('r'+c.getAttribute('data-rl'));
+  var id=c.__tipkey||'x';
   if(TIP.style.display==='block'&&TIP.dataset.forId===id){TIP.style.display='none';return;}
   TIP.dataset.forId=id;TIP.innerHTML=html;TIP.style.display='block';
   var r=c.getBoundingClientRect(),pad=6,x=r.left,y=r.bottom+pad;
@@ -142,4 +148,4 @@ document.addEventListener('click',function(e){
   TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 });
 </script></head>
-<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="formulas.html">Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-20 14:15 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><ul><li><a href='heroes.html'>Heroes</a>: 25</li><li><a href='abilities.html'>Active abilities</a>: 50</li><li><a href='abilities.html'>Passive abilities</a>: 88</li><li><a href='items.html'>Items</a>: 174</li><li><a href='relics.html'>Relics</a>: 408</li><li><a href='rankmods.html'>Rank upgrades</a>: 105</li><li><a href='events.html'>Events</a>: 93</li><li><a href='crossroads.html'>Crossroads</a>: 15</li><li><a href='stages.html'>Stages</a>: 247</li><li><a href='enemies.html'>Enemies</a>: 644</li></ul><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
+<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="formulas.html">Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-20 14:41 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><ul><li><a href='heroes.html'>Heroes</a>: 25</li><li><a href='abilities.html'>Active abilities</a>: 50</li><li><a href='abilities.html'>Passive abilities</a>: 88</li><li><a href='items.html'>Items</a>: 174</li><li><a href='relics.html'>Relics</a>: 408</li><li><a href='rankmods.html'>Rank upgrades</a>: 105</li><li><a href='events.html'>Event encounters</a>: 34</li><li><a href='events_rewards.html'>Reward building blocks</a>: 59</li><li><a href='crossroads.html'>Crossroads</a>: 15</li><li><a href='stages.html'>Stages</a>: 247</li><li><a href='enemies.html'>Enemies</a>: 644</li></ul><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
