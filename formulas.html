@@ -3,7 +3,8 @@ body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#15171c;color:#dd
 a{color:#7fb3ff;text-decoration:none}a:hover{text-decoration:underline}
 nav{position:sticky;top:0;background:#1e2128;padding:8px 14px;border-bottom:1px solid #333;z-index:5;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
 nav a{font-weight:600}nav .b{color:#999;font-size:12px;margin-left:auto}
-main{padding:14px 18px;max-width:1500px}
+main{padding:14px 18px;max-width:1500px;overflow-wrap:break-word}
+main li,main p{overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0 14px}th,td{border:1px solid #333;padding:4px 6px;vertical-align:top;text-align:left}
 th{background:#23262e}tr:nth-child(even){background:#1a1d23}
 h1{margin:6px 0}h2{margin-top:26px;border-bottom:1px solid #444;padding-bottom:3px}h3{margin:14px 0 4px}
@@ -155,7 +156,7 @@ All stats are 16.16 fixed point internally; ints are truncated where noted. Func
 <h2>Stat value</h2>
 <p>Every stat is a <code>CharacterStat</code> with BaseValue, RankBonus, ConnectedStatBonus, ConstantBonus, TemporaryBonus,
 ConstantPercentageBonus and TotalPercentageModifier. Its value is</p>
-<pre style='background:#0f1114;padding:8px;border-radius:4px'>value = ( BaseValue + (RankBonus + ConnectedStatBonus + ConstantBonus + TemporaryBonus) × (1 + ConstantPercentageBonus) ) × (1 + TotalPercentageModifier)</pre>
+<pre style='background:#0f1114;padding:8px;border-radius:4px;overflow-x:auto;max-width:100%'>value = ( BaseValue + (RankBonus + ConnectedStatBonus + ConstantBonus + TemporaryBonus) × (1 + ConstantPercentageBonus) ) × (1 + TotalPercentageModifier)</pre>
 <p>(CharacterStat.get_Value, inlined everywhere.) Items' flat stats land in ConstantBonus; "+X% stat" effects in the percentage fields.</p>
 
 <h2>Attack and Attack Speed are percentages of a base</h2>
@@ -183,7 +184,7 @@ Rift-storm damage does go through Defense (DealStormDamage).</p>
 but in this build no combat path reads them: the only readers of those three stat slots are their own getters/setters and the bonus-adding helpers. Treat any item text that promises "true damage" or "damage amp" as not yet wired up, and re-check after each patch.</p>
 
 <h2>Ability damage</h2>
-<pre style='background:#0f1114;padding:8px;border-radius:4px'>damage = BaseDamage + Σ over scalings ( stat value × RankFactor[hero rank] )</pre>
+<pre style='background:#0f1114;padding:8px;border-radius:4px;overflow-x:auto;max-width:100%'>damage = BaseDamage + Σ over scalings ( stat value × RankFactor[hero rank] )</pre>
 <p>then the same crit → defense → shield pipeline (DealCritableDamageWithScalingAction, DamageScaling.GetFactorForRank, Entity.GetStatScaling). The factors per rank are shown on each ability
 as Rank1Factor…Rank4Factor (rank C, B, A, S). Description text like <code>250 + 300% Attack</code> is exactly BaseDamage 250 with an Attack factor of 3.0.</p>
 
@@ -207,7 +208,7 @@ as Rank1Factor…Rank4Factor (rank C, B, A, S). Description text like <code>250 
 
 <h2>Shop odds — what "chance" means and how the pity works</h2>
 <p>Per shop build the game takes the chunk's base chances (ShopSingleton tables on the Shop page), adds a per-rank <b>smoothing offset</b>, prints them to the log, and builds a weighted list:</p>
-<pre style='background:#0f1114;padding:8px;border-radius:4px'>weight(rank) = 100 × (base[chunk][rank] + smoothing[rank])   — entries with weight ≤ 0 are simply not added
+<pre style='background:#0f1114;padding:8px;border-radius:4px;overflow-x:auto;max-width:100%'>weight(rank) = 100 × (base[chunk][rank] + smoothing[rank])   — entries with weight ≤ 0 are simply not added
 P(slot shows rank X) = weight(X) / Σ weights</pre>
 <p>Each of the 3 hero slots (2 item, 1 relic slots) rolls independently from that list (WeightedRandomList.GetRandom). Then:</p>
 <ul>
