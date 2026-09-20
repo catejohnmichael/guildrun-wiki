@@ -89,10 +89,15 @@ document.addEventListener('click',function(e){
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeCard();});
 function eAll(){}   // (kept so old buttons are harmless)
-window.addEventListener('load',function(){
-  if(location.hash){var t=document.getElementById(location.hash.slice(1));
-    if(t&&t.classList.contains('ecard')){t.scrollIntoView({block:'center'});openCard(t);}}
-});
+function revealHash(){
+  if(!location.hash)return;
+  var t=document.getElementById(location.hash.slice(1)); if(!t)return;
+  var d=t.closest('details'); if(d&&!d.open)d.open=true;          // open collapsed variant lists
+  if(t.classList.contains('ecard')){t.scrollIntoView({block:'center'});openCard(t);}
+  else if(d){t.scrollIntoView({block:'center'});}
+}
+window.addEventListener('load',revealHash);
+window.addEventListener('hashchange',revealHash);
 // ---- hover tooltip (item/relic stats, game-style) ----
 var TIP=null;
 function tipFor(el){
