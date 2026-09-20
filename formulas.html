@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Combat &amp; Shop Formulas — Guildrun wiki</title><style>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Combat &amp; Shop Formulas — Guildrun wiki</title><style>
 body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#15171c;color:#dde;line-height:1.4}
 a{color:#7fb3ff;text-decoration:none}a:hover{text-decoration:underline}
 nav{position:sticky;top:0;background:#1e2128;padding:8px 14px;border-bottom:1px solid #333;z-index:5;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
@@ -58,6 +58,17 @@ details.rawfx{margin:6px 0}
 details.rawfx>summary{cursor:pointer;color:#7f8aa0;font-size:12px;user-select:none;list-style:revert}
 details.rawfx>summary:hover{color:#9fb0d0}
 details.rawfx[open]>summary{color:#9fb0d0;margin-bottom:3px}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+@media (max-width:640px){
+  main{padding:10px 12px}
+  h1{font-size:22px}h2{margin-top:20px}
+  table{font-size:12px}th,td{padding:3px 5px}
+  nav{gap:3px 10px;padding:7px 10px}nav a{font-size:14px}
+  .egrid{grid-template-columns:1fr}
+  input#q{width:100%;box-sizing:border-box}
+  #modalbg{padding:12px 6px}#modal{max-width:100%}
+  #tip{max-width:78vw}
+}
 </style><script src="data.js"></script><script>
 function filt(){var q=document.getElementById('q').value.toLowerCase();
 document.querySelectorAll('[data-s]').forEach(function(el){el.style.display=(!q||el.getAttribute('data-s').toLowerCase().indexOf(q)>=0)?'':'none';});}
@@ -110,6 +121,20 @@ document.addEventListener('mouseover',function(e){
 document.addEventListener('mousemove',placeTip);
 document.addEventListener('mouseout',function(e){
   if(e.target.closest('[data-it],[data-rl]')&&TIP)TIP.style.display='none';
+});
+// ---- tap support (touch devices have no hover) ----
+document.addEventListener('click',function(e){
+  var c=e.target.closest('[data-it],[data-rl]');
+  if(!c||c.closest('a')){if(TIP&&!e.target.closest('[data-it],[data-rl]'))TIP.style.display='none';return;}
+  var html=tipFor(c); if(!html)return;
+  if(!TIP){TIP=document.createElement('div');TIP.id='tip';document.body.appendChild(TIP);}
+  var id=c.getAttribute('data-it')||('r'+c.getAttribute('data-rl'));
+  if(TIP.style.display==='block'&&TIP.dataset.forId===id){TIP.style.display='none';return;}
+  TIP.dataset.forId=id;TIP.innerHTML=html;TIP.style.display='block';
+  var r=c.getBoundingClientRect(),pad=6,x=r.left,y=r.bottom+pad;
+  if(x+TIP.offsetWidth>window.innerWidth-6)x=window.innerWidth-TIP.offsetWidth-6;
+  if(y+TIP.offsetHeight>window.innerHeight-6)y=r.top-TIP.offsetHeight-pad;
+  TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 });
 </script></head>
 <body><nav><a href="index.html">Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="formulas.html" style=color:#fff>Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Combat &amp; Shop Formulas</h1>
