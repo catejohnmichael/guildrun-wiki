@@ -1,0 +1,111 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Shop, Odds &amp; Difficulty — Guildrun wiki</title><style>
+body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#15171c;color:#dde;line-height:1.4}
+a{color:#7fb3ff;text-decoration:none}a:hover{text-decoration:underline}
+nav{position:sticky;top:0;background:#1e2128;padding:8px 14px;border-bottom:1px solid #333;z-index:5;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+nav a{font-weight:600}nav .b{color:#999;font-size:12px;margin-left:auto}
+main{padding:14px 18px;max-width:1500px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0 14px}th,td{border:1px solid #333;padding:4px 6px;vertical-align:top;text-align:left}
+th{background:#23262e}tr:nth-child(even){background:#1a1d23}
+h1{margin:6px 0}h2{margin-top:26px;border-bottom:1px solid #444;padding-bottom:3px}h3{margin:14px 0 4px}
+.card{background:#1c1f26;border:1px solid #333;border-radius:6px;padding:8px 12px;margin:8px 0}
+.kw{font-weight:600}.kw-bold{font-weight:700}.kw-statcalc{color:#f6c66a}.kw-burn{color:#ba6145}.kw-frost{color:#9cc6e3}.kw-poison{color:#85c356}
+.kw-crit{color:#cc6550}.kw-attack{color:#db9a52}.kw-magic{color:#8376e0}.kw-defense{color:#a5a39a}.kw-attackspeed{color:#eae592}.kw-maxhp,.kw-maxhealth{color:#b0e288}
+.kw-rush{color:#e6a3a3}.kw-stall{color:#babee9}.kw-shield{color:#cfe}.kw-heal{color:#8f8}.kw-shard{color:#8ee}.kw-hp{color:#b0e288}
+.fx{margin:2px 0 2px 14px;padding:0}.fx li{margin:2px 0}.obj b{color:#c9b3ff}
+.muted{color:#888}.small{font-size:12px}input#q{padding:5px 8px;width:260px;background:#0f1114;color:#eee;border:1px solid #444;border-radius:4px}
+.egrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:12px 0;align-items:start}
+.ecard{background:#1c1f26;border:1px solid #333;border-radius:6px;padding:8px 12px;cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .08s}
+.ecard:hover{border-color:#6a7bd0;box-shadow:0 0 0 1px #6a7bd0;transform:translateY(-1px)}
+.ecard h3{margin:2px 0;font-size:15px}
+.ecard .teaser{color:#9aa;font-size:12px;margin-top:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ecard .edetail{display:none}
+.ecard .chev{float:right;color:#778;font-size:12px}
+/* pop-out modal */
+#modalbg{position:fixed;inset:0;background:rgba(6,8,12,.72);display:none;z-index:60;padding:28px 16px;overflow:auto}
+#modalbg.on{display:block}
+#modal{background:#181b21;border:1px solid #3a4055;border-radius:10px;max-width:920px;margin:0 auto;box-shadow:0 18px 60px rgba(0,0,0,.6);position:relative}
+#modalhead{position:sticky;top:0;background:#1d2129;border-bottom:1px solid #333;border-radius:10px 10px 0 0;padding:12px 44px 12px 16px}
+#modalhead h3{margin:0;font-size:18px}
+#modalbody{padding:14px 16px 18px}
+#modalbody .edetail{display:block}
+#modalbody p{margin:7px 0}
+#modalclose{position:absolute;top:9px;right:12px;font-size:22px;line-height:1;color:#9aa;cursor:pointer;background:none;border:none;padding:2px 6px}
+#modalclose:hover{color:#fff}
+.ebar{display:flex;gap:8px;align-items:center;margin:10px 0 0}
+.ebar button{background:#23262e;color:#cdd;border:1px solid #444;border-radius:4px;padding:5px 10px;cursor:pointer;font:inherit;font-size:13px}
+.ebar button:hover{border-color:#6a7bd0;color:#fff}
+ph{font-style:italic;color:#93b0d6;background:#20293a;border-radius:3px;padding:0 4px;font-size:.92em}
+ph::before{content:"⟨"}ph::after{content:"⟩"}
+/* hover tooltip (game-style) */
+#tip{position:fixed;z-index:80;display:none;max-width:320px;background:#0f1622;border:1px solid #3a4a63;border-radius:7px;padding:9px 11px;box-shadow:0 10px 34px rgba(0,0,0,.65);font-size:13px;pointer-events:none}
+#tip .thead{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+#tip .thead img{width:30px;height:30px;border-radius:4px;background:#0c0e12;object-fit:contain}
+#tip .trar{font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin:3px 0 5px}
+#tip .tstats{color:#cfe3c9;margin:3px 0}
+#tip .tdesc{color:#c7ccd8;margin-top:4px}
+#tip .r0,#tip .r1{color:#9fb0c3}#tip .r2{color:#63b3e6}#tip .r3{color:#b98be6}#tip .r4{color:#e6b34d}#tip .r5{color:#e6685a}
+img.ic{width:22px;height:22px;vertical-align:middle;border-radius:3px;background:#0c0e12;object-fit:contain}
+img.ic-lg{width:34px;height:34px;vertical-align:middle;border-radius:4px;background:#0c0e12;object-fit:contain}
+.chip{display:inline-flex;align-items:center;gap:5px;background:#22252d;border:1px solid #3a3f4a;border-radius:5px;padding:2px 7px 2px 3px;margin:3px 4px 0 0;font-size:12px;white-space:nowrap}
+.chip:hover{border-color:#6a7bd0;text-decoration:none}
+.offergrid{margin:4px 0 2px}.offergrid h4{margin:8px 0 2px;font-size:13px;color:#bcd}
+.evtag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:1px 6px;border-radius:8px;margin-left:6px;vertical-align:middle}
+.evtag.code{background:#3a2f4d;color:#c9b3ff}.evtag.reward{background:#33322a;color:#e6c86a}
+.choice{margin:8px 0;padding:6px 10px;background:#191c22;border-left:3px solid #445;border-radius:0 4px 4px 0}
+.choice .ct{font-weight:600}.choice .co{color:#9aa;font-size:12px;font-style:italic}
+.note{background:#1a1f2b;border:1px solid #2c3550;border-radius:5px;padding:6px 10px;margin:6px 0;font-size:12.5px;color:#bcd}
+</style><script src="data.js"></script><script>
+function filt(){var q=document.getElementById('q').value.toLowerCase();
+document.querySelectorAll('[data-s]').forEach(function(el){el.style.display=(!q||el.getAttribute('data-s').toLowerCase().indexOf(q)>=0)?'':'none';});}
+// ---- pop-out modal ----
+function openCard(card){
+  var mb=document.getElementById('modalbg');
+  document.getElementById('modalhead').innerHTML='<button id="modalclose" title="Close">&times;</button><h3>'+card.querySelector('h3').innerHTML+'</h3>';
+  document.getElementById('modalbody').innerHTML='<div class="edetail">'+card.querySelector('.edetail').innerHTML+'</div>';
+  mb.classList.add('on');
+  if(history.replaceState) history.replaceState(null,'','#'+card.id);
+}
+function closeCard(){var mb=document.getElementById('modalbg'); if(mb)mb.classList.remove('on');
+  if(history.replaceState) history.replaceState(null,'',location.pathname);}
+document.addEventListener('click',function(e){
+  if(e.target.id==='modalbg'||e.target.id==='modalclose'){closeCard();return;}
+  if(e.target.closest('#modal')) return;               // clicks inside the popout stay
+  var card=e.target.closest('.ecard'); if(card) openCard(card);
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeCard();});
+function eAll(){}   // (kept so old buttons are harmless)
+window.addEventListener('load',function(){
+  if(location.hash){var t=document.getElementById(location.hash.slice(1));
+    if(t&&t.classList.contains('ecard')){t.scrollIntoView({block:'center'});openCard(t);}}
+});
+// ---- hover tooltip (item/relic stats, game-style) ----
+var TIP=null;
+function tipFor(el){
+  var it=el.getAttribute('data-it'), rl=el.getAttribute('data-rl');
+  var d=it?(window.IDATA&&IDATA[it]):(rl?(window.RDATA&&RDATA[rl]):null);
+  if(!d) return null;
+  var h='<div class="thead">'+(d.ic?('<img src="'+d.ic+'">'):'')+'<span>'+d.n+'</span></div>';
+  h+='<div class="trar r'+(d.rr||0)+'">'+(d.r||'')+(d.c?(' · cost '+d.c):'')+'</div>';
+  if(d.s) h+='<div class="tstats">'+d.s+'</div>';
+  if(d.d) h+='<div class="tdesc">'+d.d+'</div>';
+  return h;
+}
+function placeTip(e){
+  if(!TIP||TIP.style.display!=='block')return;
+  var pad=14,w=TIP.offsetWidth,ht=TIP.offsetHeight,x=e.clientX+pad,y=e.clientY+pad;
+  if(x+w>window.innerWidth-6)x=e.clientX-w-pad;
+  if(y+ht>window.innerHeight-6)y=e.clientY-ht-pad;
+  TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
+}
+document.addEventListener('mouseover',function(e){
+  var c=e.target.closest('[data-it],[data-rl]'); if(!c)return;
+  var html=tipFor(c); if(!html)return;
+  if(!TIP){TIP=document.createElement('div');TIP.id='tip';document.body.appendChild(TIP);}
+  TIP.innerHTML=html;TIP.style.display='block';placeTip(e);
+});
+document.addEventListener('mousemove',placeTip);
+document.addEventListener('mouseout',function(e){
+  if(e.target.closest('[data-it],[data-rl]')&&TIP)TIP.style.display='none';
+});
+</script></head>
+<body><nav><a href="index.html">Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html" style=color:#fff>Shop & Odds</a> <a href="formulas.html">Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Shop, Odds &amp; Difficulty</h1><input id="q" placeholder="filter this page…" oninput="filt()"><p class='muted'>Raw weights from ShopSingleton. The game log prints exactly these numbers as 'chances' when a shop is built (verified against a live run). Negative values are floors the per-floor increases must first overcome. Chunk = act segment (0 = first half, 1 = second).</p><h3>Hero rank chances (normal shop)</h3><table><thead><tr><th></th><th>Rank C</th><th>Rank B</th><th>Rank A</th><th>Rank S</th></tr></thead><tbody><tr data-s="chunk 0 85 0 -10 0"><td>chunk 0</td><td>85</td><td>0</td><td>-10</td><td>0</td></tr><tr data-s="chunk 1 45 50 5 -10"><td>chunk 1</td><td>45</td><td>50</td><td>5</td><td>-10</td></tr></tbody></table><h3>Hero rank chance increase per floor</h3><table><thead><tr><th></th><th>Rank B</th><th>Rank A</th><th>Rank S</th></tr></thead><tbody><tr data-s="chunk 0 10 2.5 -"><td>chunk 0</td><td>10</td><td>2.5</td><td>-</td></tr><tr data-s="chunk 1 - - 2.5"><td>chunk 1</td><td>-</td><td>-</td><td>2.5</td></tr></tbody></table><h3>Item rarity chances (normal shop)</h3><table><thead><tr><th></th><th>Common</th><th>Rare</th><th>Epic</th></tr></thead><tbody><tr data-s="chunk 0 66 33 -10"><td>chunk 0</td><td>66</td><td>33</td><td>-10</td></tr><tr data-s="chunk 1 33 66 1"><td>chunk 1</td><td>33</td><td>66</td><td>1</td></tr></tbody></table><h3>Item rarity increase per floor</h3><table><thead><tr><th></th><th>Epic</th></tr></thead><tbody><tr data-s="chunk 0 5"><td>chunk 0</td><td>5</td></tr><tr data-s="chunk 1 10"><td>chunk 1</td><td>10</td></tr></tbody></table><h3>Relic rarity chances (normal shop)</h3><table><thead><tr><th></th><th>Common</th><th>Rare</th><th>Epic</th></tr></thead><tbody><tr data-s="chunk 0 66 33 -5"><td>chunk 0</td><td>66</td><td>33</td><td>-5</td></tr><tr data-s="chunk 1 33 66 1"><td>chunk 1</td><td>33</td><td>66</td><td>1</td></tr></tbody></table><h3>Relic rarity increase per floor</h3><table><thead><tr><th></th><th>Epic</th></tr></thead><tbody><tr data-s="chunk 0 5"><td>chunk 0</td><td>5</td></tr><tr data-s="chunk 1 10"><td>chunk 1</td><td>10</td></tr></tbody></table><h3>Super shop hero rank chances</h3><table><thead><tr><th></th><th>Rank C</th><th>Rank B</th><th>Rank A</th><th>Rank S</th></tr></thead><tbody><tr data-s="chunk 0 30 50 20 0"><td>chunk 0</td><td>30</td><td>50</td><td>20</td><td>0</td></tr><tr data-s="chunk 1 15 40 40 5"><td>chunk 1</td><td>15</td><td>40</td><td>40</td><td>5</td></tr></tbody></table><h3>Super shop item rarity chances</h3><table><thead><tr><th></th><th>Common</th><th>Rare</th><th>Epic</th></tr></thead><tbody><tr data-s="chunk 0 30 50 20"><td>chunk 0</td><td>30</td><td>50</td><td>20</td></tr><tr data-s="chunk 1 10 60 30"><td>chunk 1</td><td>10</td><td>60</td><td>30</td></tr></tbody></table><h3>Super shop relic rarity chances</h3><table><thead><tr><th></th><th>Common</th><th>Rare</th><th>Epic</th><th>Legendary</th></tr></thead><tbody><tr data-s="chunk 0 30 50 20 0"><td>chunk 0</td><td>30</td><td>50</td><td>20</td><td>0</td></tr><tr data-s="chunk 1 10 60 30 0"><td>chunk 1</td><td>10</td><td>60</td><td>30</td><td>0</td></tr></tbody></table><h2>Costs</h2><table><thead><tr><th>Hero rank</th><th>Cost</th></tr></thead><tbody><tr data-s="Rank C 15"><td>Rank C</td><td>15</td></tr><tr data-s="Rank B 25"><td>Rank B</td><td>25</td></tr><tr data-s="Rank A 35"><td>Rank A</td><td>35</td></tr><tr data-s="Rank S 45"><td>Rank S</td><td>45</td></tr></tbody></table><table><thead><tr><th>Item rarity</th><th>Cost</th></tr></thead><tbody><tr data-s="Common 5"><td>Common</td><td>5</td></tr><tr data-s="Rare 15"><td>Rare</td><td>15</td></tr><tr data-s="Epic 25"><td>Epic</td><td>25</td></tr><tr data-s="Unique 5"><td>Unique</td><td>5</td></tr></tbody></table><table><thead><tr><th>Relic rarity</th><th>Cost</th></tr></thead><tbody><tr data-s="Common 10"><td>Common</td><td>10</td></tr><tr data-s="Rare 20"><td>Rare</td><td>20</td></tr><tr data-s="Epic 30"><td>Epic</td><td>30</td></tr><tr data-s="Legendary 40"><td>Legendary</td><td>40</td></tr><tr data-s="CommonQuest 15"><td>CommonQuest</td><td>15</td></tr><tr data-s="RareQuest 20"><td>RareQuest</td><td>20</td></tr><tr data-s="EpicQuest 25"><td>EpicQuest</td><td>25</td></tr><tr data-s="LegendaryQuest 25"><td>LegendaryQuest</td><td>25</td></tr><tr data-s="TeamSize 40"><td>TeamSize</td><td>40</td></tr></tbody></table><p>Resale multiplier 0.660 (all ranks/rarities) · random sale discount 25% · reroll base 1 +1 per reroll · super-shop reroll base 7 · team size cost 25 +50 per purchase · interest every 5 shards up to 20</p><p>Shop slots: heroes 3 (super 3) · items 2 (super 4) · relics 1 (super 3)</p><p>Super shop guarantees: relics 1× Legendary, 1× LegendaryQuest; items 1× Epic; team-size relic <a href="relics.html#relic_4500">Harmony Crystal</a></p><h2>Difficulties</h2><table><thead><tr><th>#</th><th>Name</th><th>Description</th><th>Stage difficulty index</th><th>Modifiers (data)</th></tr></thead><tbody><tr data-s="0 Base Play without difficulty modifiers. 1 -"><td>0</td><td>Base</td><td>Play without difficulty modifiers.</td><td>1</td><td>-</td></tr><tr data-s="1 Difficulty: C Heroes take 10% Max HP damage at the start of each combat. 1 HeroesStartBattlesDamagedEntry(HealthPercentage=0.899994)"><td>1</td><td>Difficulty: C</td><td>Heroes take 10% Max HP damage at the start of each combat.</td><td>1</td><td>HeroesStartBattlesDamagedEntry(HealthPercentage=0.899994)</td></tr><tr data-s="2 Difficulty: B Enemies are more durable. 2 -"><td>2</td><td>Difficulty: B</td><td>Enemies are more durable.</td><td>2</td><td>-</td></tr><tr data-s="3 Difficulty: A Earn 1 fewer Shard per surviving Hero at the end of each combat. 2 SurvivingHeroRewardDeltaEntry(RewardDelta=-1)"><td>3</td><td>Difficulty: A</td><td>Earn 1 fewer Shard per surviving Hero at the end of each combat.</td><td>2</td><td>SurvivingHeroRewardDeltaEntry(RewardDelta=-1)</td></tr><tr data-s="4 Difficulty: S Heroes can only equip 1 item per rank. 2 HeroItemSlotsPerRankEntry()"><td>4</td><td>Difficulty: S</td><td>Heroes can only equip 1 item per rank.</td><td>2</td><td>HeroItemSlotsPerRankEntry()</td></tr><tr data-s="5 Difficulty: SS Enemies are deadlier. 3 -"><td>5</td><td>Difficulty: SS</td><td>Enemies are deadlier.</td><td>3</td><td>-</td></tr><tr data-s="6 Difficulty: SSS Act Bosses influence combats in their act, making them more difficult. 3 ActBossRelicEntry()"><td>6</td><td>Difficulty: SSS</td><td>Act Bosses influence combats in their act, making them more difficult.</td><td>3</td><td>ActBossRelicEntry()</td></tr></tbody></table><p class='small'>Challenge shop tax: act 1 starts 10 +2/shop; act 2 starts 15 +3/shop · max hero deaths 10 · leaderboard score per difficulty 2</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>

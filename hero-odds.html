@@ -1,0 +1,182 @@
+<meta charset="utf-8">
+<title>Guildrun Hero Shop Odds</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f3f1ec; --panel:#ffffff; --panel2:#e9e6df; --line:#d3cfc5; --ink:#1d1c1a; --ink2:#5b5850; --accent:#0f7c8c;
+  --c:#8a8577; --b:#3d8f4e; --a:#2f6fd6; --s:#c48a12; --neg:#b3443a; --pre:#eeebe3;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#15171b; --panel:#1d2026; --panel2:#262a32; --line:#343943; --ink:#e8e6e1; --ink2:#a39f96; --accent:#4fc3d4;
+  --c:#9a958a; --b:#5fc072; --a:#6d9df0; --s:#e6b34a; --neg:#e07068; --pre:#111318;
+}}
+:root[data-theme="dark"]{
+  --bg:#15171b; --panel:#1d2026; --panel2:#262a32; --line:#343943; --ink:#e8e6e1; --ink2:#a39f96; --accent:#4fc3d4;
+  --c:#9a958a; --b:#5fc072; --a:#6d9df0; --s:#e6b34a; --neg:#e07068; --pre:#111318;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Source Sans 3","Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.45}
+main{max-width:1000px;margin:0 auto;padding:24px 22px 56px}
+h1,h2,h3,.lbl{font-family:"Barlow Condensed","Arial Narrow",Arial,sans-serif;text-wrap:balance}
+h1{font-size:42px;line-height:1;margin:0 0 4px;font-weight:700}
+h2{font-size:25px;margin:32px 0 8px;font-weight:600;border-bottom:2px solid var(--line);padding-bottom:3px}
+h3{font-size:18px;margin:12px 0 4px;font-weight:600}
+.lbl{text-transform:uppercase;letter-spacing:.08em;font-size:13px;color:var(--ink2);font-weight:600;margin:0 0 6px}
+p{max-width:70ch;margin:6px 0}
+.grid{display:grid;gap:14px}
+.two{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-family:"Barlow Condensed",sans-serif;font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:13px;color:var(--ink2)}
+.rank{display:inline-block;min-width:26px;padding:1px 7px;border-radius:3px;color:#fff;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:15px;text-align:center}
+.rC{background:var(--c)}.rB{background:var(--b)}.rA{background:var(--a)}.rS{background:var(--s)}
+.neg{color:var(--neg)}
+.floors{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin:8px 0 26px}
+.floor{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:8px 4px;text-align:center;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:15px;position:relative}
+.floor small{display:block;font-family:"Source Sans 3",sans-serif;font-weight:400;font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em}
+.floor.boss{border-color:var(--s);box-shadow:inset 0 0 0 1px var(--s)}
+.floor.super::after{content:"WIN → SUPER SHOP";position:absolute;left:0;right:0;top:100%;margin-top:4px;font-size:10px;letter-spacing:.06em;color:var(--s);font-weight:700}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;counter-reset:step;margin-top:14px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;position:relative}
+.step::before{counter-increment:step;content:counter(step);position:absolute;top:-11px;left:12px;background:var(--accent);color:#fff;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:14px;width:22px;height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center}
+.step h3{margin:2px 0 4px}
+.step p{margin:0;font-size:15px;color:var(--ink2)}
+code,pre{font-family:Consolas,"Cascadia Mono",monospace;font-size:14px}
+pre{background:var(--pre);border:1px solid var(--line);border-radius:4px;padding:10px 12px;overflow-x:auto;margin:8px 0}
+.calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.calc label{display:block;font-size:13px;color:var(--ink2);margin-bottom:3px}
+.calc select,.calc input{width:100%;padding:6px 8px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:4px;font:inherit}
+.calc input:focus,.calc select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.out{margin-top:12px}
+.note{border-left:3px solid var(--neg);padding:6px 12px;background:var(--panel2);border-radius:0 4px 4px 0;margin:10px 0;max-width:80ch}
+.muted{color:var(--ink2);font-size:14px}
+ul{padding-left:20px;margin:6px 0}li{margin:3px 0;max-width:75ch}
+@media (max-width:640px){.floors{grid-template-columns:repeat(6,1fr)}.floor.super::after{content:"SUPER"}}
+</style>
+
+<main>
+<p class="lbl">Guildrun Demo · Red Rift · build 25119884</p>
+<h1>Hero Shop Odds</h1>
+
+<h2>Acts, floors, super shop</h2>
+<p>One fight per floor, a shop after every fight. Odds depend on the act and on whether it is a super shop. <b>Super shop = the shop after beating the Act 1 boss on floor 6.</b> Lose that fight and it is a normal shop. Floor 12 is the final boss; the run ends there, so there is no shop after it. Red Rift changes enemy stats and adds a shop tax, not hero odds.</p>
+<div class="floors">
+  <div class="floor">1<small>Act 1</small></div><div class="floor">2<small>Act 1</small></div><div class="floor">3<small>Act 1</small></div>
+  <div class="floor">4<small>Act 1</small></div><div class="floor">5<small>Act 1</small></div><div class="floor boss super">6<small>Act 1 boss</small></div>
+  <div class="floor">7<small>Act 2</small></div><div class="floor">8<small>Act 2</small></div><div class="floor">9<small>Act 2</small></div>
+  <div class="floor">10<small>Act 2</small></div><div class="floor">11<small>Act 2</small></div><div class="floor boss">12<small>final boss</small></div>
+</div>
+
+<h2>Weights</h2>
+<p>Chance of a rank in one slot = its weight ÷ sum of all weights above 0. Weights at 0 or below are not in the roll. 3 hero slots, each rolled separately.</p>
+<div class="grid two">
+  <div class="panel"><p class="lbl">Normal shop</p>
+  <table><thead><tr><th></th><th><span class="rank rC">C</span></th><th><span class="rank rB">B</span></th><th><span class="rank rA">A</span></th><th><span class="rank rS">S</span></th></tr></thead>
+  <tbody>
+  <tr><td>Act 1 base</td><td>85</td><td>0</td><td class="neg">−10</td><td>0</td></tr>
+  <tr><td>Act 1 pity per build</td><td>—</td><td>+10</td><td>+2.5</td><td>—</td></tr>
+  <tr><td>Act 2 base</td><td>45</td><td>50</td><td>5</td><td class="neg">−10</td></tr>
+  <tr><td>Act 2 pity per build</td><td>—</td><td>—</td><td>—</td><td>+2.5</td></tr>
+  </tbody></table>
+  <p class="muted">S never appears in an Act 1 normal shop. A is a flat 5 in Act 2.</p>
+  </div>
+  <div class="panel"><p class="lbl">Super shop after the Act 1 boss (pity not applied)</p>
+  <table><thead><tr><th></th><th><span class="rank rC">C</span></th><th><span class="rank rB">B</span></th><th><span class="rank rA">A</span></th><th><span class="rank rS">S</span></th></tr></thead>
+  <tbody>
+  <tr><td>Per slot</td><td>30%</td><td>50%</td><td>20%</td><td>0%</td></tr>
+  </tbody></table>
+  <p class="muted">Reroll costs 7 here. Rerolling a super shop does not move the pity counters. The first Act 2 shop after it has always started from base in every logged run.</p>
+  </div>
+</div>
+
+<h2>Pity</h2>
+<p>Each rank has a counter, starting at 0. Weight = base + counter.</p>
+<ul>
+<li>Shop built without rank X on offer → X's counter goes up by its step.</li>
+<li>Rank X appears → X's counter resets to 0, instantly, before the remaining slots roll. Act 1: never two B or two A in one shop.</li>
+<li>A reroll is a build. 5 rerolls move the counters as much as 5 floors.</li>
+<li>Counters are independent. Seeing a B does not touch A.</li>
+<li>Counters persist across floors and are saved with the run. Super shops ignore them and do not move them.</li>
+</ul>
+<div class="panel">
+<p class="lbl">Act 1 example, builds in order</p>
+<table>
+<thead><tr><th>Build</th><th>B weight</th><th>A weight</th><th>In the roll</th><th>Shows (example)</th><th>After</th></tr></thead>
+<tbody>
+<tr><td>Floor 1 shop</td><td>0</td><td class="neg">−10</td><td>C</td><td>C C C</td><td>B 10, A −7.5</td></tr>
+<tr><td>Floor 2 shop</td><td>10</td><td class="neg">−7.5</td><td>C B</td><td>C C C</td><td>B 20, A −5</td></tr>
+<tr><td>Floor 2 reroll</td><td>20</td><td class="neg">−5</td><td>C B</td><td>C <b>B</b> C</td><td>B 0, A −2.5</td></tr>
+<tr><td>Floor 3 shop</td><td>0</td><td class="neg">−2.5</td><td>C</td><td>C C C</td><td>B 10, A 0</td></tr>
+<tr><td>Floor 3 reroll</td><td>10</td><td>0</td><td>C B</td><td>C C C</td><td>B 20, A 2.5</td></tr>
+<tr><td>Floor 4 shop</td><td>20</td><td>2.5</td><td>C B A</td><td>C C <b>A</b></td><td>B 30, A −10</td></tr>
+</tbody></table>
+<p class="muted">Floor 4 shop: B = 20 ÷ 107.5 = 18.6% per slot, A = 2.3%.</p>
+</div>
+
+<h2>Act 1, builds in a row without the rank</h2>
+<div class="panel">
+<table id="pity"><thead><tr><th>Builds without it</th><th>B weight</th><th>A weight</th><th>B per slot</th><th>A per slot</th><th>≥1 B in shop</th><th>≥1 A in shop</th></tr></thead><tbody></tbody></table>
+</div>
+
+<h2>Calculator</h2>
+<div class="panel">
+<div class="calc">
+  <div><label for="chunk">Shop</label><select id="chunk"><option value="0">Act 1 (floors 1–6)</option><option value="1">Act 2 (floors 7–12)</option><option value="s0">Super shop after Act 1 boss</option></select></div>
+  <div><label for="nb">Builds since last <b>B</b></label><input id="nb" type="number" min="0" max="99" value="0"></div>
+  <div><label for="na">Builds since last <b>A</b></label><input id="na" type="number" min="0" max="99" value="0"></div>
+  <div><label for="ns">Builds since last <b>S</b></label><input id="ns" type="number" min="0" max="99" value="0"></div>
+</div>
+<div class="out" id="out"></div>
+</div>
+
+<h2>Rule</h2>
+<pre>weight[rank] = base[act][rank] + pity[rank]        (super shop: base only)
+P(slot = rank) = weight[rank] ÷ Σ weights above 0
+slot rolls X   → pity[X] = 0, weight[X] = base[act][X]
+after build    → every rank not shown: pity += step[act][rank]</pre>
+<ul>
+<li>Prices: C 15, B 25, A 35, S 45. One hero per shop 25% off.</li>
+<li>Reroll: 1, +1 per reroll on that floor. Super shop: 7.</li>
+<li>Difficulty changes nothing here.</li>
+<li>Pool: all 25 heroes minus locked ones (Tilly 50 XP, Zuri 650, Niklas 1250). No repeats within a shop.</li>
+<li>First build of a run: C only. One reroll later B is in at weight 10 (10.5% per slot, 28% for the shop). The run-start hero pick is not a shop and the tutorial rigs the first shop to include a copy of your starting hero.</li>
+</ul>
+<div class="note"><b>Not found in code:</b> what zeroes the counters around the floor-6 boss. Observed every time: the super shop shows pure base even when counters were provably above 0 just before, and the first Act 2 shop starts from base.</div>
+</main>
+
+<script>
+(function(){
+  var BASE={ "0":{C:85,B:0,A:-10,S:0}, "1":{C:45,B:50,A:5,S:-10}, "s0":{C:30,B:50,A:20,S:0}, "s1":{C:15,B:40,A:40,S:5} };
+  var STEP={ "0":{B:10,A:2.5,S:0}, "1":{B:0,A:0,S:2.5} };
+  function probs(w){ var tot=0,k; for(k in w) if(w[k]>0) tot+=w[k]; var p={}; for(k in w) p[k]= w[k]>0? w[k]/tot : 0; return p; }
+  function pct(x){ return (x*100).toFixed(1)+"%"; }
+  function atLeastOne(p){ return 1-Math.pow(1-p,3); }
+  var tb=document.querySelector("#pity tbody"), rows="";
+  for(var n=0;n<=9;n++){
+    var wb=10*n, wa=-10+2.5*n, p=probs({C:85,B:wb,A:wa,S:0});
+    var col=function(v){ return v<=0? '<span class="neg">'+v+'</span>' : v; };
+    rows+="<tr><td>"+n+"</td><td>"+col(wb)+"</td><td>"+col(wa)+"</td><td>"+pct(p.B)+"</td><td>"+pct(p.A)+"</td><td>"+pct(atLeastOne(p.B))+"</td><td>"+pct(atLeastOne(p.A))+"</td></tr>";
+  }
+  tb.innerHTML=rows;
+  var ids=["chunk","nb","na","ns"], el={}; ids.forEach(function(i){ el[i]=document.getElementById(i); });
+  function calc(){
+    var where=el.chunk.value, base=BASE[where], w={};
+    var isSuper=where.charAt(0)==="s", act=isSuper? where.charAt(1) : where, step=STEP[act];
+    for(var k in base){
+      var box=el["n"+k.toLowerCase()], n= box? (parseInt(box.value,10)||0) : 0;
+      w[k]=base[k]+(isSuper? 0 : (step[k]||0)*n);
+    }
+    var p=probs(w), h="<table><thead><tr><th>Rank</th><th>Weight</th><th>Per slot</th><th>≥1 in shop</th></tr></thead><tbody>";
+    ["C","B","A","S"].forEach(function(k){ h+="<tr><td><span class='rank r"+k+"'>"+k+"</span></td><td>"+(w[k]<=0?'<span class="neg">'+w[k]+'</span>':w[k])+"</td><td>"+pct(p[k])+"</td><td>"+pct(atLeastOne(p[k]))+"</td></tr>"; });
+    h+="</tbody></table>";
+    var need=function(v){ return Math.ceil((0.001-v)/2.5); };
+    if(!isSuper && act==="0" && w.A<=0) h+="<p class='muted'>A can appear after "+need(w.A)+" more build"+(need(w.A)===1?"":"s")+" without an A.</p>";
+    if(!isSuper && act==="1" && w.S<=0) h+="<p class='muted'>S can appear after "+need(w.S)+" more build"+(need(w.S)===1?"":"s")+" without an S.</p>";
+    document.getElementById("out").innerHTML=h;
+  }
+  ids.forEach(function(i){ el[i].addEventListener("input",calc); el[i].addEventListener("change",calc); });
+  calc();
+})();
+</script>
