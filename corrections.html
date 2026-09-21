@@ -46,6 +46,21 @@ img.si{height:1.18em;width:auto;vertical-align:-0.24em;margin-right:2px}
 .homecard .hcn{font-size:24px;font-weight:700;color:#eef}.homecard .hct{font-size:13px;color:#9fb0c3}
 .fx{margin:2px 0 2px 14px;padding:0}.fx li{margin:2px 0}.obj b{color:#c9b3ff}
 .muted{color:#888}.small{font-size:12px}input#q{padding:5px 8px;width:260px;background:#0f1114;color:#eee;border:1px solid #444;border-radius:4px}
+/* faceted filter bar (sticky under the global nav) */
+.fbar{position:sticky;top:0;z-index:4;background:#191c22;border:1px solid #2c313c;border-radius:8px;padding:8px 10px;margin:2px 0 14px;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.fbar .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:2px}
+.fsearch{padding:5px 9px;flex:1 1 200px;min-width:150px;background:#0f1114;color:#eee;border:1px solid #444;border-radius:5px}
+.fcount{color:#9fb0c3;font-size:12px;white-space:nowrap}
+.fclear{background:#23262e;color:#bcd;border:1px solid #3a3f4a;border-radius:5px;padding:5px 10px;cursor:pointer;font:inherit;font-size:12px}
+.fclear:hover{border-color:#6a7bd0;color:#fff}
+.fgroup{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;margin-top:5px}
+.flabel{color:#8b93a4;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-right:4px;min-width:54px}
+.fchip{display:inline-flex;align-items:center;gap:5px;background:#20242e;color:#cdd;border:1px solid #333a47;border-radius:20px;padding:3px 10px;cursor:pointer;font:inherit;font-size:12px}
+.fchip:hover{border-color:#6a7bd0}
+.fchip.on{background:#3652a4;border-color:#5c7fd0;color:#fff}
+.fchip .fc{font-size:10px;color:#8b93a4}.fchip.on .fc{color:#cfe}
+.fsec.fhide{display:none}
+.fnone{color:#9aa;font-style:italic;margin:10px 2px;display:none}
 .corr{margin:5px 0;padding:6px 9px;font-size:12.5px;background:#2a2410;border:1px solid #6b5a1e;border-left:3px solid #d9b038;border-radius:4px;color:#e8dcae}.corr b{color:#f4e1a0}
 .egrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin:12px 0;align-items:start}
 .ecard{background:#1c1f26;border:1px solid #333;border-radius:6px;padding:8px 12px;cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .08s}
@@ -115,10 +130,53 @@ details.rawfx[open]>summary{color:#9fb0d0;margin-bottom:3px}
   input#q{width:100%;box-sizing:border-box}
   #modalbg{padding:12px 6px}#modal{max-width:100%}
   #tip{max-width:78vw}
+  .fbar{max-height:44vh;overflow:auto}.flabel{min-width:100%}
 }
 </style><script src="data.js"></script><script>
-function filt(){var q=document.getElementById('q').value.toLowerCase();
-document.querySelectorAll('[data-s]').forEach(function(el){el.style.display=(!q||el.getAttribute('data-s').toLowerCase().indexOf(q)>=0)?'':'none';});}
+// ---- faceted filter + search (works across grid, list and card views at once) ----
+function _qEl(){return document.getElementById('q');}
+function applyF(){
+  var q=(_qEl()?_qEl().value:'').toLowerCase().trim();
+  var act={};                                            // namespace -> [active values]  (AND across ns, OR within)
+  document.querySelectorAll('.fchip.on').forEach(function(b){(act[b.dataset.fn]=act[b.dataset.fn]||[]).push(b.dataset.fv);});
+  var nss=Object.keys(act), n=0;
+  document.querySelectorAll('.fhide-onfilter').forEach(function(el){el.style.display=nss.length?'none':'';});  // e.g. relics' "not collectible" block while facets are active
+  document.querySelectorAll('[data-f],[data-s]').forEach(function(el){
+    var ok=true, f=el.getAttribute('data-f');
+    if(nss.length&&f!==null){var fa=f.split(' ');   // facet chips only hide elements that opted in (have data-f)
+      for(var k=0;k<nss.length;k++){var ns=nss[k];
+        if(!act[ns].some(function(v){return fa.indexOf(ns+':'+v)>=0;})){ok=false;break;}}}
+    if(ok&&q){ok=(el.getAttribute('data-s')||'').toLowerCase().indexOf(q)>=0;}
+    el.style.display=ok?'':'none';
+    if(ok&&el.classList.contains('fcount-item'))n++;
+  });
+  document.querySelectorAll('.fsec').forEach(function(sec){          // hide a section whose items are all filtered out
+    var any=[].some.call(sec.querySelectorAll('[data-f],[data-s]'),function(e){return e.style.display!=='none';});
+    sec.classList.toggle('fhide',!any);});
+  var c=document.getElementById('fcount'); if(c){var tot=document.querySelectorAll('.fcount-item').length; c.textContent=(n===tot?('all '+tot):(n+' of '+tot));}
+  var nn=document.querySelector('.fnone'); if(nn)nn.style.display=n?'none':'block';
+  syncHash(act,q);
+}
+function toggleChip(b){b.classList.toggle('on');applyF();}
+function clearF(){document.querySelectorAll('.fchip.on').forEach(function(b){b.classList.remove('on');});if(_qEl())_qEl().value='';applyF();}
+function syncHash(act,q){                                            // reflect filters into the URL (shareable), but never clobber an element-id anchor
+  if(location.hash&&document.getElementById(location.hash.slice(1)))return;
+  var parts=[];Object.keys(act).forEach(function(ns){parts.push(ns+'='+act[ns].join(','));});if(q)parts.push('q='+encodeURIComponent(q));
+  var h=parts.join('&');if(history.replaceState)history.replaceState(null,'',h?('#'+h):location.pathname);
+}
+function initF(){
+  var bar=document.querySelector('.fbar'); if(!bar)return;
+  bar.addEventListener('click',function(e){var b=e.target.closest('.fchip');if(b)toggleChip(b);});
+  var nav=document.querySelector('nav');                             // stack the sticky bar directly under the sticky nav
+  function place(){bar.style.top=(nav?nav.offsetHeight:0)+'px';}place();window.addEventListener('resize',place);
+  var h=location.hash.slice(1);                                      // restore filters from the URL (only when it isn't an element anchor)
+  if(h&&h.indexOf('=')>=0&&!document.getElementById(h)){h.split('&').forEach(function(p){var kv=p.split('=');var ns=kv[0],vals=decodeURIComponent(kv[1]||'');
+    if(ns==='q'){if(_qEl())_qEl().value=vals;}
+    else vals.split(',').forEach(function(v){var b=document.querySelector('.fchip[data-fn="'+ns+'"][data-fv="'+v+'"]');if(b)b.classList.add('on');});});}
+  applyF();
+}
+window.addEventListener('load',initF);
+function filt(){applyF();}   // back-compat: old inline oninline handlers still work
 // ---- pop-out modal ----
 function openCard(card){
   var mb=document.getElementById('modalbg');
