@@ -30,6 +30,16 @@ img.si{height:1.18em;width:auto;vertical-align:-0.24em;margin-right:2px}
 .cmp .corrbadge:hover{color:#ffd777}
 .cmp details.rawfx{margin-top:8px}
 .dsec{margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#9fb0d0}
+/* list/grid view toggle + icon grid (hover an icon for its stat tooltip) */
+.viewtoggle{display:inline-flex;margin:2px 0 12px;border:1px solid #3a3f4a;border-radius:6px;overflow:hidden}
+.viewtoggle button{background:#1c1f26;color:#bcd;border:0;padding:5px 14px;cursor:pointer;font:inherit;font-size:13px}
+.viewtoggle button.on{background:#2c3140;color:#fff}
+.viewwrap .vgrid{display:none}.viewwrap.grid .vgrid{display:block}.viewwrap.grid .vlist{display:none}
+.igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:10px;margin:8px 0 16px}
+.gcell{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 4px;background:#1a1d23;border:1px solid #2a2f38;border-radius:8px;text-align:center;cursor:pointer}
+.gcell:hover{border-color:#6a7bd0;background:#20242e;text-decoration:none}
+.gcell img{width:46px;height:46px;object-fit:contain;background:#0c0e12;border-radius:7px}
+.gcell .gname{font-size:11px;color:#cdd;line-height:1.2;overflow-wrap:anywhere}
 .fx{margin:2px 0 2px 14px;padding:0}.fx li{margin:2px 0}.obj b{color:#c9b3ff}
 .muted{color:#888}.small{font-size:12px}input#q{padding:5px 8px;width:260px;background:#0f1114;color:#eee;border:1px solid #444;border-radius:4px}
 .corr{margin:5px 0;padding:6px 9px;font-size:12.5px;background:#2a2410;border:1px solid #6b5a1e;border-left:3px solid #d9b038;border-radius:4px;color:#e8dcae}.corr b{color:#f4e1a0}
@@ -119,9 +129,15 @@ function closeCard(){var mb=document.getElementById('modalbg'); if(!mb)return;
   if(mb.classList.contains('slide')){mb.classList.remove('shown');setTimeout(function(){mb.classList.remove('on','slide');},240);}
   else mb.classList.remove('on');
   if(history.replaceState) history.replaceState(null,'',location.pathname);}
+function setView(wrap,v){wrap.classList.toggle('grid',v==='grid');
+  wrap.parentNode.querySelectorAll('.viewtoggle button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-view')===v);});}
 document.addEventListener('click',function(e){
   if(e.target.id==='modalbg'||e.target.id==='modalclose'){closeCard();return;}
   if(e.target.closest('#modal')) return;               // clicks inside the popout stay
+  var tb=e.target.closest('.viewtoggle button');
+  if(tb){var w=tb.closest('main').querySelector('.viewwrap'); if(w)setView(w,tb.getAttribute('data-view')); return;}
+  var gc=e.target.closest('.gcell');                   // grid icon -> switch to list so its card is visible, then anchor-scroll
+  if(gc){var w=gc.closest('.viewwrap'); if(w)setView(w,'list'); return;}
   var card=e.target.closest('.ecard'); if(card) openCard(card);
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeCard();});
@@ -183,4 +199,4 @@ document.addEventListener('click',function(e){
   TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 });
 </script></head>
-<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="formulas.html">Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-20 22:59 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><ul><li><a href='heroes.html'>Heroes</a>: 25</li><li><a href='abilities.html'>Active abilities</a>: 50</li><li><a href='abilities.html'>Passive abilities</a>: 88</li><li><a href='items.html'>Items</a>: 174</li><li><a href='relics.html'>Relics</a>: 408</li><li><a href='rankmods.html'>Rank upgrades</a>: 105</li><li><a href='events.html'>Event encounters</a>: 34</li><li><a href='events_rewards.html'>Reward building blocks</a>: 59</li><li><a href='crossroads.html'>Crossroads</a>: 15</li><li><a href='stages.html'>Stages</a>: 247</li><li><a href='enemies.html'>Enemies</a>: 644</li></ul><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
+<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="formulas.html">Formulas</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-20 23:02 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><ul><li><a href='heroes.html'>Heroes</a>: 25</li><li><a href='abilities.html'>Active abilities</a>: 50</li><li><a href='abilities.html'>Passive abilities</a>: 88</li><li><a href='items.html'>Items</a>: 174</li><li><a href='relics.html'>Relics</a>: 408</li><li><a href='rankmods.html'>Rank upgrades</a>: 105</li><li><a href='events.html'>Event encounters</a>: 34</li><li><a href='events_rewards.html'>Reward building blocks</a>: 59</li><li><a href='crossroads.html'>Crossroads</a>: 15</li><li><a href='stages.html'>Stages</a>: 247</li><li><a href='enemies.html'>Enemies</a>: 644</li></ul><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
