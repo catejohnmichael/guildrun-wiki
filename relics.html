@@ -35,6 +35,17 @@ img.si{height:1.18em;width:auto;vertical-align:-0.24em;margin-right:2px}
 #modalbody p{margin:7px 0}
 #modalclose{position:absolute;top:9px;right:12px;font-size:22px;line-height:1;color:#9aa;cursor:pointer;background:none;border:none;padding:2px 6px}
 #modalclose:hover{color:#fff}
+/* right slide-out detail panel (spirecodex-style; used by enemy cards) */
+#modalbg.slide{padding:0}
+#modalbg.slide #modal{position:fixed;top:0;right:0;height:100%;width:min(560px,94vw);max-width:none;margin:0;border-radius:0;border-width:0 0 0 1px;overflow:auto;transform:translateX(100%);transition:transform .24s ease}
+#modalbg.slide.shown #modal{transform:translateX(0)}
+#modalbg.slide #modalhead{border-radius:0}
+.ecard .ecardimg{display:block;width:100%;height:150px;object-fit:contain;background:linear-gradient(160deg,#20242e,#14161b);border-radius:6px;margin-bottom:8px}
+.edetail .bigart{text-align:center;margin:0 0 6px}
+.edetail .bigart img{width:210px;max-width:72%;height:auto;background:linear-gradient(160deg,#20242e,#14161b);border-radius:10px;padding:6px}
+.edetail .dsec{margin:13px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#9fb0d0}
+.edetail .move{background:#191c22;border-left:3px solid #445;border-radius:0 4px 4px 0;padding:6px 10px;margin:6px 0}
+.edetail .move .mk{color:#8aa;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
 .ebar{display:flex;gap:8px;align-items:center;margin:10px 0 0}
 .ebar button{background:#23262e;color:#cdd;border:1px solid #444;border-radius:4px;padding:5px 10px;cursor:pointer;font:inherit;font-size:13px}
 .ebar button:hover{border-color:#6a7bd0;color:#fff}
@@ -83,10 +94,14 @@ function openCard(card){
   var mb=document.getElementById('modalbg');
   document.getElementById('modalhead').innerHTML='<button id="modalclose" title="Close">&times;</button><h3>'+card.querySelector('h3').innerHTML+'</h3>';
   document.getElementById('modalbody').innerHTML='<div class="edetail">'+card.querySelector('.edetail').innerHTML+'</div>';
-  mb.classList.add('on');
+  mb.classList.toggle('slide',card.getAttribute('data-panel')==='slide');
+  mb.scrollTop=0; mb.classList.add('on');
+  if(mb.classList.contains('slide')) requestAnimationFrame(function(){mb.classList.add('shown');});
   if(history.replaceState) history.replaceState(null,'','#'+card.id);
 }
-function closeCard(){var mb=document.getElementById('modalbg'); if(mb)mb.classList.remove('on');
+function closeCard(){var mb=document.getElementById('modalbg'); if(!mb)return;
+  if(mb.classList.contains('slide')){mb.classList.remove('shown');setTimeout(function(){mb.classList.remove('on','slide');},240);}
+  else mb.classList.remove('on');
   if(history.replaceState) history.replaceState(null,'',location.pathname);}
 document.addEventListener('click',function(e){
   if(e.target.id==='modalbg'||e.target.id==='modalclose'){closeCard();return;}
