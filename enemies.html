@@ -133,13 +133,15 @@ function closeCard(){var mb=document.getElementById('modalbg'); if(!mb)return;
   if(mb.classList.contains('slide')){mb.classList.remove('shown');setTimeout(function(){mb.classList.remove('on','slide');},240);}
   else mb.classList.remove('on');
   if(history.replaceState) history.replaceState(null,'',location.pathname);}
-function setView(wrap,v){wrap.classList.toggle('grid',v==='grid');
-  wrap.parentNode.querySelectorAll('.viewtoggle button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-view')===v);});}
+function wrapFor(vt){var w=vt.nextElementSibling;while(w&&!w.classList.contains('viewwrap'))w=w.nextElementSibling;return w;}
+function setView(wrap,v){if(!wrap)return;wrap.classList.toggle('grid',v==='grid');
+  var vt=wrap.previousElementSibling;while(vt&&!vt.classList.contains('viewtoggle'))vt=vt.previousElementSibling;
+  if(vt)vt.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-view')===v);});}
 document.addEventListener('click',function(e){
   if(e.target.id==='modalbg'||e.target.id==='modalclose'){closeCard();return;}
   if(e.target.closest('#modal')) return;               // clicks inside the popout stay
   var tb=e.target.closest('.viewtoggle button');
-  if(tb){var w=tb.closest('main').querySelector('.viewwrap'); if(w)setView(w,tb.getAttribute('data-view')); return;}
+  if(tb){setView(wrapFor(tb.closest('.viewtoggle')),tb.getAttribute('data-view')); return;}  // this toggle's own wrap (a page may have several)
   var gc=e.target.closest('.gcell');                   // grid icon -> switch to list so its card is visible, then anchor-scroll
   if(gc){var w=gc.closest('.viewwrap'); if(w)setView(w,'list'); return;}
   var card=e.target.closest('.ecard'); if(card) openCard(card);
