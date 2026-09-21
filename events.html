@@ -49,6 +49,16 @@ img.si{height:1.18em;width:auto;vertical-align:-0.24em;margin-right:2px}
 .mapp .no li::before{content:"✕ ";color:#d9695a;font-weight:700}
 .mnote{font-size:12px;color:#b3bcc9;margin:9px 0 0;border-top:1px solid #2a2f38;padding-top:6px}
 .mtbl{font-size:12px;margin:8px 0 2px}.mtbl td,.mtbl th{padding:2px 8px}
+/* mechanic icon tiles (click → detail modal); big, simple, low-clutter overview */
+.mtilegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:14px;margin:12px 0 6px}
+.ecard.mtile{display:flex;flex-direction:column;align-items:center;text-align:center;gap:9px;padding:20px 12px 16px;background:linear-gradient(165deg,#20242e,#161a21);border:1px solid #2f3540;border-radius:13px}
+.ecard.mtile:hover{border-color:#6a7bd0;transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.45)}
+.mtile .mticon{width:66px;height:66px;display:flex;align-items:center;justify-content:center;border-radius:18px;font-size:34px;line-height:1;
+  background:radial-gradient(circle at 36% 28%,#2c3444,#141821);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 5px 16px rgba(0,0,0,.45)}
+.mtile .mticon img{width:44px;height:44px;object-fit:contain}
+.mtile h3{margin:0;font-size:15px;color:#eef;line-height:1.25}
+.mtile .mtsub{color:#9aa;font-size:11.5px;line-height:1.35}
+#modalbody .msub{color:#9aa;font-size:13px;margin:0 0 4px}
 /* list/grid view toggle + icon grid (hover an icon for its stat tooltip) */
 .viewtoggle{display:inline-flex;margin:2px 0 12px;border:1px solid #3a3f4a;border-radius:6px;overflow:hidden}
 .viewtoggle button{background:#1c1f26;color:#bcd;border:0;padding:5px 14px;cursor:pointer;font:inherit;font-size:13px}
