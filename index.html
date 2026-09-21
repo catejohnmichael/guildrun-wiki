@@ -2,7 +2,19 @@
 body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#15171c;color:#dde;line-height:1.4}
 a{color:#7fb3ff;text-decoration:none}a:hover{text-decoration:underline}
 nav{position:sticky;top:0;background:#1e2128;padding:8px 14px;border-bottom:1px solid #333;z-index:5;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
-nav a{font-weight:600}nav .b{color:#999;font-size:12px;margin-left:auto}
+nav a{font-weight:600}nav .b{color:#999;font-size:12px;margin-left:10px}
+/* wiki-wide search (nav, top-right) */
+.gsearch{position:relative;margin-left:auto}
+#gs{padding:5px 9px;width:210px;max-width:46vw;background:#0f1114;color:#eee;border:1px solid #3a4055;border-radius:16px;font:inherit;font-size:13px}
+#gs:focus{outline:none;border-color:#6a7bd0}
+.gsr{position:absolute;top:calc(100% + 5px);right:0;width:min(360px,86vw);max-height:70vh;overflow:auto;background:#1a1d23;border:1px solid #3a4055;border-radius:9px;box-shadow:0 14px 40px rgba(0,0,0,.6);z-index:70;display:none;padding:4px}
+.gsr a{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;color:#dde;text-decoration:none}
+.gsr a:hover,.gsr a.gsel{background:#2a3550;text-decoration:none}
+.gsr a img{width:26px;height:26px;object-fit:contain;background:#0c0e12;border-radius:5px;flex:none}
+.gsr a .gsn{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsr a .gst{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#8b93a4;flex:none}
+.gsr .gsnone{padding:9px 11px;color:#9aa;font-size:12.5px}
+.gsr .gsmore{padding:6px 11px;color:#8b93a4;font-size:11.5px}
 main{padding:14px 18px;max-width:1500px;overflow-wrap:break-word}
 main li,main p{overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0 14px}th,td{border:1px solid #333;padding:4px 6px;vertical-align:top;text-align:left}
@@ -206,6 +218,36 @@ function initF(){
 }
 window.addEventListener('load',initF);
 function filt(){applyF();}   // back-compat: old inline oninline handlers still work
+// ---- wiki-wide search (nav, top-right) — searches GINDEX across every page ----
+function gsInit(){
+  var inp=document.getElementById('gs'), box=document.getElementById('gsr');
+  if(!inp||!box||!window.GINDEX)return;
+  var sel=-1, cur=[];
+  function h(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function render(){
+    var q=inp.value.trim().toLowerCase();
+    if(!q){box.style.display='none';box.innerHTML='';cur=[];return;}
+    var res=[];
+    for(var i=0;i<GINDEX.length;i++){var g=GINDEX[i];var idx=g[0].toLowerCase().indexOf(q);if(idx>=0)res.push([idx,g]);}
+    res.sort(function(a,b){return a[0]-b[0]||a[1][0].length-b[1][0].length;});
+    cur=res.slice(0,12).map(function(r){return r[1];});
+    if(!cur.length){box.innerHTML='<div class="gsnone">No matches for “'+h(inp.value)+'”.</div>';box.style.display='block';return;}
+    var more=res.length-cur.length;
+    box.innerHTML=cur.map(function(g,i){return '<a href="'+g[2]+'" data-i="'+i+'">'+(g[3]?'<img src="'+h(g[3])+'" alt="">':'')+'<span class="gsn">'+h(g[0])+'</span><span class="gst">'+h(g[1])+'</span></a>';}).join('')+(more>0?'<div class="gsmore">+'+more+' more — keep typing to narrow</div>':'');
+    box.style.display='block'; sel=-1;
+  }
+  function move(d){var a=box.querySelectorAll('a'); if(!a.length)return; if(sel>=0&&a[sel])a[sel].classList.remove('gsel'); sel=(sel+d+a.length)%a.length; a[sel].classList.add('gsel'); a[sel].scrollIntoView({block:'nearest'});}
+  inp.addEventListener('input',render);
+  inp.addEventListener('focus',function(){if(inp.value)render();});
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){e.preventDefault();move(1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();move(-1);}
+    else if(e.key==='Enter'){var a=box.querySelectorAll('a'); var t=(sel>=0&&a[sel])?a[sel]:a[0]; if(t)location.href=t.getAttribute('href');}
+    else if(e.key==='Escape'){box.style.display='none'; inp.blur();}
+  });
+  document.addEventListener('click',function(e){if(!e.target.closest('.gsearch'))box.style.display='none';});
+}
+window.addEventListener('load',gsInit);
 // ---- pop-out modal ----
 function openCard(card){
   var mb=document.getElementById('modalbg');
@@ -292,4 +334,4 @@ document.addEventListener('click',function(e){
   TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 });
 </script></head>
-<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-21 11:04 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><div class='homegrid'><a class='homecard' href='heroes.html'><span class='hcn'>25</span><span class='hct'>Heroes</span></a><a class='homecard' href='abilities.html'><span class='hcn'>50</span><span class='hct'>Active abilities</span></a><a class='homecard' href='abilities.html'><span class='hcn'>88</span><span class='hct'>Passive abilities</span></a><a class='homecard' href='items.html'><span class='hcn'>174</span><span class='hct'>Items</span></a><a class='homecard' href='relics.html'><span class='hcn'>333</span><span class='hct'>Relics</span></a><a class='homecard' href='rankmods.html'><span class='hcn'>105</span><span class='hct'>Rank upgrades</span></a><a class='homecard' href='events.html'><span class='hcn'>34</span><span class='hct'>Event encounters</span></a><a class='homecard' href='events_rewards.html'><span class='hcn'>59</span><span class='hct'>Reward building blocks</span></a><a class='homecard' href='crossroads.html'><span class='hcn'>15</span><span class='hct'>Crossroads</span></a><a class='homecard' href='stages.html'><span class='hcn'>247</span><span class='hct'>Stages</span></a><a class='homecard' href='enemies.html'><span class='hcn'>644</span><span class='hct'>Enemies</span></a></div><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
+<body><nav><a href="index.html" style=color:#fff>Home</a> <a href="heroes.html">Heroes</a> <a href="abilities.html">Abilities</a> <a href="classes.html">Classes & Guilds</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="crossroads.html">Crossroads</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="mechanics.html">Mechanics</a> <a href="pools.html">Pools</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a><div class="gsearch"><input id="gs" type="search" placeholder="Search the whole wiki…" autocomplete="off" spellcheck="false" aria-label="Search the wiki"><div id="gsr" class="gsr"></div></div><span class="b">build 25323618</span></nav><main><h1>Guildrun Wiki</h1><p>Generated 2026-09-21 11:07 from Steam build <b>25323618</b> (Guildrun Demo, app 4425970). All numbers come straight from the game's balancing sheets baked into the build; nothing here is community guesswork.</p><div class='homegrid'><a class='homecard' href='heroes.html'><span class='hcn'>25</span><span class='hct'>Heroes</span></a><a class='homecard' href='abilities.html'><span class='hcn'>50</span><span class='hct'>Active abilities</span></a><a class='homecard' href='abilities.html'><span class='hcn'>88</span><span class='hct'>Passive abilities</span></a><a class='homecard' href='items.html'><span class='hcn'>174</span><span class='hct'>Items</span></a><a class='homecard' href='relics.html'><span class='hcn'>333</span><span class='hct'>Relics</span></a><a class='homecard' href='rankmods.html'><span class='hcn'>105</span><span class='hct'>Rank upgrades</span></a><a class='homecard' href='events.html'><span class='hcn'>34</span><span class='hct'>Event encounters</span></a><a class='homecard' href='events_rewards.html'><span class='hcn'>59</span><span class='hct'>Reward building blocks</span></a><a class='homecard' href='crossroads.html'><span class='hcn'>15</span><span class='hct'>Crossroads</span></a><a class='homecard' href='stages.html'><span class='hcn'>247</span><span class='hct'>Stages</span></a><a class='homecard' href='enemies.html'><span class='hcn'>644</span><span class='hct'>Enemies</span></a></div><p>Starting shards 15 · shards per fight won (accumulated) 10 · campfire rest heals 15 · reward per surviving hero 2</p><p class='muted'>Descriptions use the game's own text with {n} placeholders filled from each entry's variables; <code>N_Stat</code> inside a damage bracket means N% of that stat. Effect lines under each entry are the literal effect trees (trigger → target: actions) from the data.</p></main><div id="modalbg"><div id="modal"><div id="modalhead"></div><div id="modalbody"></div></div></div></body></html>
