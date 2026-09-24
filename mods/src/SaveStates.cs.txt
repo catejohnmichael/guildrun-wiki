@@ -1,0 +1,485 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using HarmonyLib;
+using Il2CppEmber.Scopes.Application.Persistence.Data;
+using Il2CppEmber.Scopes.Application.Persistence.Services;
+using Il2CppEmber.Scopes.GameRun.RunSession.Data;
+using Il2CppEmber.Scopes.GameRun.RunSession.Services;
+using Il2CppEmber.Scopes.MainMenu.UI;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using MelonLoader;
+using MelonLoader.Utils;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace SaveStates
+{
+    // Save states for solo runs, built on the game's own persistence:
+    //  - Every run save goes through PersistenceService.SaveRun(GameRunMetadata header, byte[] payload, bool).
+    //    A postfix keeps the latest header+payload; a snapshot is that exact save, written to UserData\SaveStates.
+    //  - The game saves on entering Placement (and Shop/Resolution/Crossroads), so a snapshot taken then is a clean
+    //    pre-fight state. The combat seed is derived from run seed + progress (RunSessionService.CalculateCurrentSeed),
+    //    so a restored fight replays with identical randomness unless the lineup changes.
+    //  - Restore = RunSessionService.GoBackToMenu() -> PersistenceService.SaveRun(snapshot) (writes the file AND
+    //    refreshes the cached run header the menu uses) -> GameFlowService.StartRun() (the menu's Continue path).
+    // Refuses to act in co-op (a Fusion runner that is not single-player) and, by default, in Endless runs.
+    public class SaveStatesMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled, AutoCheckpoints, AllowInEndless;
+        internal static MelonPreferences_Entry<string> KeySave, KeyPanel, KeyQuickLoad;
+        internal static MelonPreferences_Entry<int> MaxCheckpointsPerRun;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("SaveStates");
+            Enabled = c.CreateEntry("Enabled", true, description: "Turn save states on or off.");
+            AutoCheckpoints = c.CreateEntry("AutoCheckpoints", true, description: "Automatically snapshot the start of every fight's placement phase.");
+            MaxCheckpointsPerRun = c.CreateEntry("MaxCheckpointsPerRun", 60, description: "Oldest automatic checkpoints beyond this are deleted (manual saves are kept).");
+            AllowInEndless = c.CreateEntry("AllowInEndless", false, description: "Allow save states in Endless runs (these submit to the global leaderboard).");
+            KeySave = c.CreateEntry("KeySave", "F5", description: "Take a manual snapshot now (Shop/Placement only).");
+            KeyPanel = c.CreateEntry("KeyPanel", "F8", description: "Show/hide the snapshot list.");
+            KeyQuickLoad = c.CreateEntry("KeyQuickLoad", "F9", description: "Load the most recent snapshot of this run.");
+        }
+
+        public override void OnUpdate()
+        {
+            if (!Enabled.Value) return;
+            try
+            {
+                if (Pressed(KeySave.Value)) States.RequestManualSave();
+                if (Pressed(KeyPanel.Value)) Ui.Toggle();
+                if (Pressed(KeyQuickLoad.Value)) States.QuickLoad();
+            }
+            catch (Exception e) { Log.Warning("input: " + e.Message); }
+            States.Tick();
+        }
+
+        public override void OnGUI()
+        {
+            if (Enabled.Value) Ui.Draw();
+        }
+
+        private static readonly Dictionary<string, Key> KeyCache = new();
+        private static bool Pressed(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            if (!KeyCache.TryGetValue(name, out var k))
+            {
+                if (!Enum.TryParse(name, true, out k)) { Log.Warning($"unknown key '{name}'"); k = Key.None; }
+                KeyCache[name] = k;
+            }
+            if (k == Key.None) return false;
+            var kb = Keyboard.current;
+            return kb != null && kb[k].wasPressedThisFrame;
+        }
+    }
+
+    internal sealed class Slot
+    {
+        public string Path, Kind, Label, RunId, Flow, Created;
+        public int Act, Floor, TotalFloor;
+        public byte[] Header, Payload;
+    }
+
+    internal static class States
+    {
+        // live game objects, captured by hooks
+        internal static RunSessionService RunSvc;
+        internal static PersistenceService PersistSvc;
+        internal static MainMenuUIController Menu;
+
+        private static GameRunMetadata _lastHeader;
+        private static byte[] _lastPayload;
+        private enum Capture { None, Manual }
+        private static Capture _pending;
+        private static readonly HashSet<string> CheckpointedThisSession = new();
+
+        private enum Phase { Idle, ToMenu, WaitMenu, Write, WaitWrite, Start }
+        private static Phase _phase;
+        private static Slot _restoring;
+        private static float _phaseAt;
+        private static DateTime _writeStartUtc;
+
+        internal static bool Restoring => _phase != Phase.Idle;
+        internal static string Root => Path.Combine(MelonEnvironment.UserDataDirectory, "SaveStates");
+
+        // ---------------- context ----------------
+        internal static bool TryContext(out string runId, out int act, out int floor, out int total, out BattleFlowState flow)
+        {
+            runId = null; act = floor = total = 0; flow = default;
+            try
+            {
+                if (RunSvc == null) return false;
+                var d = RunSvc.Data;
+                if (d == null) return false;
+                runId = d.RunId.ToString(); act = d.CurrentAct.Value; floor = d.CurrentFloor.Value; total = d.CurrentTotalFloor;
+                flow = d.BattleFlowState.Value;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static bool InEndless()
+        {
+            try { return RunSvc != null && (int)RunSvc.Data.CurrentEndlessFloor.Value > 0; } catch { return false; }
+        }
+
+        internal static bool InCoop()
+        {
+            try
+            {
+                foreach (var r in UnityEngine.Object.FindObjectsOfType<Il2CppFusion.NetworkRunner>())
+                    if (r != null && r.IsRunning && !r.IsSinglePlayer) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool Blocked(out string why)
+        {
+            why = null;
+            if (InCoop()) { why = "Save states are off in co-op."; return true; }
+            if (!SaveStatesMod.AllowInEndless.Value && InEndless()) { why = "Save states are off in Endless runs (leaderboard). See AllowInEndless."; return true; }
+            return false;
+        }
+
+        // ---------------- capture ----------------
+        internal static void OnSaveRun(PersistenceService svc, GameRunMetadata header, Il2CppStructArray<byte> payload)
+        {
+            PersistSvc = svc;
+            if (Restoring || payload == null) return;              // our own restore write, or the save the game makes on the way to the menu
+            _lastHeader = header;
+            _lastPayload = ToManaged(payload);
+
+            if (!TryContext(out var runId, out var act, out var floor, out var total, out var flow)) return;
+            if (InCoop() || (!SaveStatesMod.AllowInEndless.Value && InEndless())) { _pending = Capture.None; return; }
+
+            if (_pending == Capture.Manual)
+            {
+                _pending = Capture.None;
+                var s = Write("manual", runId, act, floor, total, flow);
+                Ui.Toast(s != null ? $"Saved: {s.Label}" : "Save failed - see MelonLoader log");
+                return;
+            }
+            if (SaveStatesMod.AutoCheckpoints.Value && flow == BattleFlowState.Placement)
+            {
+                var key = runId + "|" + total;
+                if (CheckpointedThisSession.Add(key) && !ExistsCheckpoint(runId, total))
+                {
+                    var s = Write("checkpoint", runId, act, floor, total, flow);
+                    if (s != null) Ui.Toast($"Checkpoint: {s.Label}", 2.5f);
+                    Prune(runId);
+                }
+            }
+        }
+
+        private static byte[] ToManaged(Il2CppStructArray<byte> a)
+        {
+            var b = new byte[a.Length];
+            for (int i = 0; i < b.Length; i++) b[i] = a[i];
+            return b;
+        }
+
+        // GameRunMetadata is a blittable struct (int version, ScopeIdentifier{int}, int difficulty, bool challenge);
+        // the `unmanaged` constraint makes the compiler prove the interop type really is one, so raw bytes round-trip.
+        private static byte[] HeaderBytes(GameRunMetadata h) => RawBytes(h);
+        private static GameRunMetadata HeaderFrom(byte[] b) => FromRaw<GameRunMetadata>(b);
+
+        private static unsafe byte[] RawBytes<T>(T v) where T : unmanaged
+        {
+            var b = new byte[sizeof(T)];
+            fixed (byte* p = b) *(T*)p = v;
+            return b;
+        }
+
+        private static unsafe T FromRaw<T>(byte[] b) where T : unmanaged
+        {
+            if (b.Length != sizeof(T)) throw new InvalidDataException("snapshot header size mismatch (game update?)");
+            fixed (byte* p = b) return *(T*)p;
+        }
+
+        internal static void RequestManualSave()
+        {
+            if (Restoring) return;
+            if (Blocked(out var why)) { Ui.Toast(why); return; }
+            if (!TryContext(out _, out _, out _, out _, out var flow)) { Ui.Toast("Start or continue a run first."); return; }
+            if (flow != BattleFlowState.Placement && flow != BattleFlowState.Shop) { Ui.Toast("Manual saves work during Shop/Placement (before you press Fight)."); return; }
+            try
+            {
+                var gps = RunSvc._gameRunPersistenceService;
+                _pending = Capture.Manual;
+                gps.SaveGameRunData();                                   // the SaveRun postfix writes the snapshot
+                Ui.Toast("Saving...", 1.5f);
+            }
+            catch (Exception e) { _pending = Capture.None; SaveStatesMod.Log.Error("manual save: " + e); Ui.Toast("Save failed - see MelonLoader log"); }
+        }
+
+        // ---------------- slot files ----------------
+        private static Slot Write(string kind, string runId, int act, int floor, int total, BattleFlowState flow)
+        {
+            try
+            {
+                if (_lastPayload == null) return null;
+                var dir = Path.Combine(Root, runId);
+                Directory.CreateDirectory(dir);
+                var now = DateTime.Now;
+                var s = new Slot
+                {
+                    Kind = kind, RunId = runId, Act = act, Floor = floor, TotalFloor = total, Flow = flow.ToString(),
+                    Created = now.ToString("o"), Header = HeaderBytes(_lastHeader), Payload = _lastPayload,
+                    Label = $"Act {act} Floor {floor}" + (kind == "checkpoint" ? " - fight start" : " - manual " + now.ToString("HH:mm:ss")),
+                };
+                s.Path = Path.Combine(dir, $"{now:yyyyMMdd-HHmmss}_{kind}_A{act}F{floor}.gss.json");
+                var json = JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["format"] = "guildrun-savestate/1", ["kind"] = s.Kind, ["label"] = s.Label, ["runId"] = runId,
+                    ["act"] = act, ["floor"] = floor, ["totalFloor"] = total, ["flow"] = s.Flow, ["created"] = s.Created,
+                    ["headerSize"] = s.Header.Length, ["header"] = Convert.ToBase64String(s.Header), ["payload"] = Convert.ToBase64String(s.Payload),
+                });
+                File.WriteAllText(s.Path, json);
+                SaveStatesMod.Log.Msg($"{kind} saved: {s.Path} ({s.Payload.Length} bytes)");
+                return s;
+            }
+            catch (Exception e) { SaveStatesMod.Log.Error("write snapshot: " + e); return null; }
+        }
+
+        internal static Slot Read(string path)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                var r = doc.RootElement;
+                return new Slot
+                {
+                    Path = path, Kind = r.GetProperty("kind").GetString(), Label = r.GetProperty("label").GetString(),
+                    RunId = r.GetProperty("runId").GetString(), Act = r.GetProperty("act").GetInt32(), Floor = r.GetProperty("floor").GetInt32(),
+                    TotalFloor = r.GetProperty("totalFloor").GetInt32(), Flow = r.GetProperty("flow").GetString(), Created = r.GetProperty("created").GetString(),
+                    Header = Convert.FromBase64String(r.GetProperty("header").GetString()),
+                    Payload = Convert.FromBase64String(r.GetProperty("payload").GetString()),
+                };
+            }
+            catch (Exception e) { SaveStatesMod.Log.Warning($"unreadable snapshot {path}: {e.Message}"); return null; }
+        }
+
+        // newest first; header/payload not loaded (cheap listing)
+        internal static List<(string path, string label, string kind, DateTime when)> List(string runId)
+        {
+            var list = new List<(string, string, string, DateTime)>();
+            if (runId == null) return list;
+            var dir = Path.Combine(Root, runId);
+            if (!Directory.Exists(dir)) return list;
+            foreach (var f in Directory.GetFiles(dir, "*.gss.json"))
+            {
+                var name = Path.GetFileName(f);                         // yyyyMMdd-HHmmss_kind_AxFy.gss.json
+                var parts = name.Split('_');
+                if (parts.Length < 3) continue;
+                DateTime.TryParseExact(parts[0], "yyyyMMdd-HHmmss", null, System.Globalization.DateTimeStyles.None, out var when);
+                var af = parts[2].Replace(".gss.json", "");
+                var label = (parts[1] == "checkpoint" ? "Fight start " : "Manual ") + af.Replace("A", "Act ").Replace("F", " Floor ") + "  " + when.ToString("HH:mm:ss");
+                list.Add((f, label, parts[1], when));
+            }
+            return list.OrderByDescending(x => x.Item4).ToList();
+        }
+
+        internal static string LatestRunId()
+        {
+            if (TryContext(out var id, out _, out _, out _, out _)) return id;
+            if (!Directory.Exists(Root)) return null;
+            return new DirectoryInfo(Root).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.Name;
+        }
+
+        private static bool ExistsCheckpoint(string runId, int total) =>
+            List(runId).Any(s => s.kind == "checkpoint" && (Read(s.path)?.TotalFloor ?? -1) == total);
+
+        private static void Prune(string runId)
+        {
+            var cps = List(runId).Where(s => s.kind == "checkpoint").ToList();
+            foreach (var old in cps.Skip(Math.Max(1, SaveStatesMod.MaxCheckpointsPerRun.Value)))
+                try { File.Delete(old.path); } catch { }
+        }
+
+        // ---------------- restore ----------------
+        internal static void QuickLoad()
+        {
+            var latest = List(LatestRunId()).FirstOrDefault();
+            if (latest.path == null) { Ui.Toast("No snapshots for this run yet."); return; }
+            Load(latest.path);
+        }
+
+        internal static void Load(string path)
+        {
+            if (Restoring) return;
+            if (Blocked(out var why)) { Ui.Toast(why); return; }
+            var s = Read(path);
+            if (s == null) { Ui.Toast("Snapshot unreadable - see MelonLoader log"); return; }
+            if (PersistSvc == null) { Ui.Toast("The game hasn't saved yet this session - play until the next save, then load."); return; }
+            _restoring = s;
+            Ui.Hide();
+            Ui.Toast($"Loading {s.Label}...", 30f);
+            SaveStatesMod.Log.Msg($"restoring {path}");
+            if (Menu != null && RunSvc == null) Go(Phase.Write);          // already at the main menu
+            else Go(Phase.ToMenu);
+        }
+
+        private static void Go(Phase p) { _phase = p; _phaseAt = Time.realtimeSinceStartup; }
+        private static float InPhase => Time.realtimeSinceStartup - _phaseAt;
+
+        private static void Fail(string msg, Exception e = null)
+        {
+            SaveStatesMod.Log.Error("restore failed: " + msg + (e != null ? " " + e : ""));
+            Ui.Toast("Load failed: " + msg);
+            _phase = Phase.Idle; _restoring = null;
+        }
+
+        internal static void Tick()
+        {
+            try
+            {
+                switch (_phase)
+                {
+                    case Phase.ToMenu:
+                        Menu = null;
+                        RunSvc.GoBackToMenu();
+                        Go(Phase.WaitMenu);
+                        break;
+                    case Phase.WaitMenu:
+                        if (Menu != null && InPhase > 1.5f) Go(Phase.Write);   // let the menu finish initialising
+                        else if (InPhase > 60f) Fail("main menu never appeared");
+                        break;
+                    case Phase.Write:
+                        _writeStartUtc = DateTime.UtcNow;
+                        var payload = new Il2CppStructArray<byte>(_restoring.Payload.Length);
+                        for (int i = 0; i < _restoring.Payload.Length; i++) payload[i] = _restoring.Payload[i];
+                        PersistSvc.SaveRun(HeaderFrom(_restoring.Header), payload, false);
+                        Go(Phase.WaitWrite);
+                        break;
+                    case Phase.WaitWrite:
+                        if (RunFileHasPayload()) Go(Phase.Start);
+                        else if (InPhase > 10f) Fail("the game did not write the snapshot to its save file");
+                        break;
+                    case Phase.Start:
+                        var gfs = Menu._gameFlowService;
+                        _phase = Phase.Idle;
+                        var label = _restoring.Label; _restoring = null;
+                        RunSvc = null;
+                        gfs.StartRun();
+                        Ui.Toast($"Loaded {label}", 4f);
+                        break;
+                }
+            }
+            catch (Exception e) { Fail("unexpected error in " + _phase, e); }
+        }
+
+        // The run save file (…\LocalLow\Leyline\Guildrun\Saves\<platform-user>\Run) must be newer than our write and contain the payload.
+        private static bool RunFileHasPayload()
+        {
+            try
+            {
+                var saves = Path.Combine(Application.persistentDataPath, "Saves");
+                if (!Directory.Exists(saves)) return false;
+                foreach (var f in Directory.GetFiles(saves, "Run", SearchOption.AllDirectories))
+                {
+                    if (File.GetLastWriteTimeUtc(f) < _writeStartUtc.AddSeconds(-1)) continue;
+                    var bytes = File.ReadAllBytes(f);
+                    if (bytes.AsSpan().IndexOf(_restoring.Payload) >= 0) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+    }
+
+    internal static class Ui
+    {
+        private static bool _open;
+        private static string _toast;
+        private static float _toastUntil;
+        private static int _page;
+        private static List<(string path, string label, string kind, DateTime when)> _cache;
+        private static bool _guiBroken;
+
+        internal static void Toast(string msg, float seconds = 3.5f)
+        {
+            _toast = msg; _toastUntil = Time.realtimeSinceStartup + seconds;
+            SaveStatesMod.Log.Msg(msg);
+        }
+        internal static void Toggle() { _open = !_open; _page = 0; _cache = _open ? States.List(States.LatestRunId()) : null; }
+        internal static void Hide() { _open = false; }
+
+        internal static void Draw()
+        {
+            if (_guiBroken) return;
+            try
+            {
+                if (_toast != null && Time.realtimeSinceStartup < _toastUntil)
+                {
+                    var r = new Rect(Screen.width / 2f - 260, 70, 520, 34);
+                    GUI.Box(r, "");
+                    GUI.Label(new Rect(r.x + 12, r.y + 8, r.width - 24, 22), _toast);
+                }
+                if (!_open) return;
+
+                const int perPage = 10, rowH = 30;
+                var list = _cache ?? new();
+                float w = 460, h = 110 + perPage * rowH;
+                var box = new Rect(Screen.width - w - 30, 120, w, h);
+                GUI.Box(box, $"Save states - {SaveStatesMod.KeyPanel.Value} to close");
+                float y = box.y + 30;
+                if (list.Count == 0) GUI.Label(new Rect(box.x + 14, y, w - 28, 24), "No snapshots for this run yet. Fight starts are saved automatically.");
+                foreach (var s in list.Skip(_page * perPage).Take(perPage))
+                {
+                    GUI.Label(new Rect(box.x + 14, y + 4, w - 120, 24), s.label);
+                    if (GUI.Button(new Rect(box.x + w - 96, y, 80, 26), "Load")) { States.Load(s.path); return; }
+                    y += rowH;
+                }
+                float by = box.y + h - 40;
+                if (_page > 0 && GUI.Button(new Rect(box.x + 14, by, 90, 26), "< Newer")) _page--;
+                if ((_page + 1) * perPage < list.Count && GUI.Button(new Rect(box.x + 110, by, 90, 26), "Older >")) _page++;
+                if (GUI.Button(new Rect(box.x + w - 176, by, 160, 26), $"Save now ({SaveStatesMod.KeySave.Value})")) States.RequestManualSave();
+            }
+            catch (Exception e)
+            {
+                _guiBroken = true;
+                SaveStatesMod.Log.Error("on-screen UI unavailable, hotkeys still work (F9 = load latest): " + e.Message);
+            }
+        }
+    }
+
+    // ---------------- hooks ----------------
+    [HarmonyPatch(typeof(PersistenceService), nameof(PersistenceService.SaveRun))]
+    internal static class SaveRunPatch
+    {
+        private static void Postfix(PersistenceService __instance, GameRunMetadata header, Il2CppStructArray<byte> payload)
+        {
+            try { States.OnSaveRun(__instance, header, payload); }
+            catch (Exception e) { SaveStatesMod.Log.Warning("SaveRun hook: " + e.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(RunSessionService), "CheckBattleFlowStateChangePersistence")]
+    internal static class FlowChangePatch
+    {
+        private static void Postfix(RunSessionService __instance) { States.RunSvc = __instance; }
+    }
+
+    [HarmonyPatch(typeof(MainMenuUIController), nameof(MainMenuUIController.OnStart))]
+    internal static class MenuStartPatch
+    {
+        private static void Postfix(MainMenuUIController __instance) { States.Menu = __instance; States.RunSvc = null; }
+    }
+}
+
+namespace System.Runtime.CompilerServices
+{
+    // Needed for the `unmanaged` constraint: the interop reference set doesn't expose the BCL's copy to the compiler.
+    internal sealed class IsUnmanagedAttribute : Attribute { }
+}

@@ -1,0 +1,437 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using HarmonyLib;
+using Il2CppEmber.Balancing.SimulationBridge;
+using Il2CppEmber.Balancing.SimulationBridge.Effects;
+using Il2CppEmber.Scopes.GameRun.RunSession.Services;
+using Il2CppEmber.Simulation.Core.Report;
+using Il2CppEmber.Simulation.Core.State;
+using Il2CppEmber.Simulation.Core.State.Entities;
+using Il2CppEmber.Simulation.Core.State.Stats;
+using Il2CppEmber.Simulation.Core.State.Stats.LogEntries;
+using Il2CppInterop.Runtime.InteropTypes;
+using MelonLoader;
+using MelonLoader.Utils;
+
+[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace BattleRecorder
+{
+    // Records every fight to a JSON file for later review.
+    //
+    // The simulation already keeps a full combat log per fight: Frame.BattleLogger holds a List<LogEntry>
+    // (every attack, ability hit, effect damage/heal with the item/relic/ability that caused it, status
+    // applied/removed/ticked, mana, deaths) plus BattleStats (~45 running counters). Nothing persists it.
+    //  - BattleLogger.Log postfix: stamps each entry with the fight time (entries carry no timestamp) and
+    //    snapshots the roster at the first entry, so fighters that die and get removed are still known.
+    //  - RunSessionService.AppendHistory postfix: called once per finished fight with the final frame;
+    //    serialises everything and writes the file on a background thread.
+    // Read-only: nothing here writes game or simulation state.
+    public class BattleRecorderMod : MelonMod
+    {
+        internal static MelonPreferences_Entry<bool> Enabled;
+        internal static MelonPreferences_Entry<string> OutputDir;
+        internal static MelonPreferences_Entry<bool> RecordTimestamps;
+        internal static MelonLogger.Instance Log;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var cat = MelonPreferences.CreateCategory("BattleRecorder");
+            Enabled = cat.CreateEntry("Enabled", true, description: "Write a JSON record of every fight.");
+            OutputDir = cat.CreateEntry("OutputDir", "", description: "Folder for fight records. Empty = <game>\\UserData\\BattleRecorder.");
+            RecordTimestamps = cat.CreateEntry("RecordTimestamps", true, description: "Stamp each combat-log entry with its fight time (needed for timelines).");
+        }
+
+        internal static string ResolveOutputDir()
+        {
+            var d = OutputDir.Value;
+            return string.IsNullOrWhiteSpace(d) ? Path.Combine(MelonEnvironment.UserDataDirectory, "BattleRecorder") : d;
+        }
+    }
+
+    internal sealed class EntityInfo
+    {
+        public string Guid, Name, Team, Entry;
+        public int Rank = -1;
+        public double X, Y, Z;
+        public List<string> Items = new();
+        public bool Reserve;
+    }
+
+    internal sealed class Session
+    {
+        public readonly List<float> Times = new();
+        public List<EntityInfo> Roster;
+        public List<(string guid, string entry, string owner)> Items;
+        public List<(string guid, string entry)> Relics;
+    }
+
+    internal static class Recorder
+    {
+        // keyed by the native BattleLogger pointer: previews/other simulations get their own session
+        private static readonly Dictionary<IntPtr, Session> Sessions = new();
+
+        internal static void OnLog(BattleLogger logger, Frame f)
+        {
+            if (!BattleRecorderMod.Enabled.Value) return;
+            var key = logger.Pointer;
+            if (!Sessions.TryGetValue(key, out var s))
+            {
+                if (Sessions.Count > 16) Sessions.Clear();
+                s = new Session();
+                Sessions[key] = s;
+                try { SnapshotRoster(f, s); } catch (Exception e) { BattleRecorderMod.Log.Warning("roster snapshot failed: " + e.Message); }
+            }
+            if (BattleRecorderMod.RecordTimestamps.Value) s.Times.Add(Fp(f.TimeSinceStart.RawValue));
+        }
+
+        internal static float Fp(long raw) => raw / 65536f;
+
+        private static string G(EntityId id) => id.Guid.ToString();
+
+        internal static string EntryId(Il2CppObjectBase entry)
+        {
+            if (entry == null) return null;
+            try
+            {
+                var sheet = entry.TryCast<Il2Cppgg.leyline.balancing.Sheets.BalancingSheetEntry>();
+                if (sheet != null) return sheet.Id.ToString();
+                var be = entry.TryCast<Il2Cppgg.leyline.balancing.Unity.BalancingEntry>();
+                if (be != null) return be.Id.ToString();
+            }
+            catch { }
+            return null;
+        }
+
+        private static void SnapshotRoster(Frame f, Session s)
+        {
+            var names = new Dictionary<string, string>();
+            if (f.DebugNames != null)
+                foreach (var kv in f.DebugNames) names[G(kv.Key)] = kv.Value;
+
+            s.Roster = new List<EntityInfo>();
+            void Add(Il2CppSystem.Collections.Generic.List<Entity> list, bool reserve)
+            {
+                if (list == null) return;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var e = list[i];
+                    var info = new EntityInfo { Guid = G(e.Id), Reserve = reserve };
+                    names.TryGetValue(info.Guid, out info.Name);
+                    try
+                    {
+                        var c = e.Character;
+                        info.Team = c.Team.ToString();
+                        info.Rank = c.Rank;
+                        info.Entry = EntryId(c.BalancingEntry);
+                        if (c.EquippedItemIds != null)
+                            for (int k = 0; k < c.EquippedItemIds.Count; k++)
+                            {
+                                var it = c.EquippedItemIds[k];
+                                if (it.HasValue) info.Items.Add(it.Value.Guid.ToString());
+                            }
+                    }
+                    catch (Exception ex) { BattleRecorderMod.Log.Warning("character read failed: " + ex.Message); }
+                    try
+                    {
+                        var p = e.Transform.Position;
+                        info.X = Fp(p.X.RawValue); info.Y = Fp(p.Y.RawValue); info.Z = Fp(p.Z.RawValue);
+                    }
+                    catch { }
+                    s.Roster.Add(info);
+                }
+            }
+            Add(f.Entities, false);
+            Add(f.ReserveEntities, true);
+
+            s.Items = new();
+            if (f.Items != null)
+                for (int i = 0; i < f.Items.Count; i++)
+                {
+                    var it = f.Items[i];
+                    s.Items.Add((it.Id.Guid.ToString(), EntryId(it.ItemEntry), it.OwnerEntityId.HasValue ? G(it.OwnerEntityId.Value) : null));
+                }
+            s.Relics = new();
+            if (f.Relics != null)
+                for (int i = 0; i < f.Relics.Count; i++)
+                {
+                    var r = f.Relics[i];
+                    s.Relics.Add((r.Id.Guid.ToString(), EntryId(r.RelicEntry)));
+                }
+        }
+
+        internal static void OnFightFinished(RunSessionService svc, SimulationReport report, ReadOnlyFrame wrapper)
+        {
+            if (!BattleRecorderMod.Enabled.Value) return;
+            var frame = wrapper?.Frame;
+            if (frame == null) { BattleRecorderMod.Log.Warning("AppendHistory without a frame; nothing recorded."); return; }
+            var logger = frame.BattleLogger;
+            if (logger == null) { BattleRecorderMod.Log.Warning("frame has no BattleLogger; nothing recorded."); return; }
+
+            if (!Sessions.TryGetValue(logger.Pointer, out var s)) { s = new Session(); SnapshotRoster(frame, s); }
+            Sessions.Clear();
+
+            var ms = new MemoryStream();
+            string fileTag;
+            using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = false }))
+                fileTag = Write(w, svc, report, frame, logger, s);
+
+            var dir = BattleRecorderMod.ResolveOutputDir();
+            var path = Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss}_{fileTag}.json");
+            var bytes = ms.ToArray();
+            Task.Run(() =>
+            {
+                try { Directory.CreateDirectory(dir); File.WriteAllBytes(path, bytes); BattleRecorderMod.Log.Msg($"fight recorded: {path} ({bytes.Length / 1024} KB)"); }
+                catch (Exception e) { BattleRecorderMod.Log.Error("could not write " + path + ": " + e.Message); }
+            });
+        }
+
+        private static string Write(Utf8JsonWriter w, RunSessionService svc, SimulationReport report, Frame frame, BattleLogger logger, Session s)
+        {
+            var index = new Dictionary<string, int>();
+            foreach (var e in s.Roster) index[e.Guid] = index.Count;
+            int Idx(EntityId id)
+            {
+                var g = G(id);
+                if (index.TryGetValue(g, out var i)) return i;
+                i = index.Count; index[g] = i;
+                s.Roster.Add(new EntityInfo { Guid = g });
+                return i;
+            }
+
+            string tag = "fight";
+            w.WriteStartObject();
+            w.WriteString("format", "guildrun-battle-record/1");
+            w.WriteString("mod", "BattleRecorder 1.0.0");
+            w.WriteString("recordedAt", DateTime.Now.ToString("o"));
+
+            // ---- run context ----
+            w.WriteStartObject("run");
+            try
+            {
+                var d = svc.Data;
+                w.WriteString("runId", d.RunId.ToString());
+                w.WriteNumber("act", d.CurrentAct.Value);
+                w.WriteNumber("floor", d.CurrentFloor.Value);
+                w.WriteNumber("totalFloor", d.CurrentTotalFloor);
+                w.WriteNumber("runSeed", d.RunSeed.Value);
+                w.WriteNumber("combatSeed", d.CurrentSeed.Value);
+                var enc = EntryId(d.CurrentEncounter);
+                if (enc != null) w.WriteString("encounter", enc);
+                tag = $"A{d.CurrentAct.Value}F{d.CurrentFloor.Value}";
+            }
+            catch (Exception e) { w.WriteString("error", e.Message); }
+            w.WriteEndObject();
+
+            // ---- result ----
+            w.WriteStartObject("result");
+            try
+            {
+                w.WriteString("outcome", report.Result.ToString());
+                w.WriteBoolean("allHeroesSurvived", report.AllHeroesSurvived);
+                tag += "_" + report.Result;
+            }
+            catch (Exception e) { w.WriteString("error", e.Message); }
+            w.WriteNumber("durationSeconds", Fp(frame.TimeSinceStart.RawValue));
+            w.WriteNumber("frames", frame.FrameNumber);
+            w.WriteEndObject();
+
+            // ---- items / relics (entities of their own; owner = hero guid) ----
+            w.WriteStartArray("items");
+            foreach (var (g, entry, owner) in s.Items ?? new())
+            {
+                w.WriteStartObject(); w.WriteString("guid", g); w.WriteString("entry", entry);
+                if (owner != null) w.WriteNumber("owner", index.TryGetValue(owner, out var oi) ? oi : -1);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteStartArray("relics");
+            foreach (var (g, entry) in s.Relics ?? new()) { w.WriteStartObject(); w.WriteString("guid", g); w.WriteString("entry", entry); w.WriteEndObject(); }
+            w.WriteEndArray();
+
+            // ---- combat log ----
+            var entries = logger._logEntries;
+            int n = entries?.Count ?? 0;
+            bool timed = s.Times.Count == n;
+            var kinds = new Dictionary<string, int>();
+            w.WriteBoolean("timestamps", timed);
+            w.WriteStartArray("log");
+            for (int i = 0; i < n; i++)
+            {
+                var le = entries[i];
+                w.WriteStartObject();
+                if (timed) w.WriteNumber("t", Math.Round(s.Times[i], 3));
+                string k;
+                try { k = WriteEntry(w, le); }
+                catch (Exception e) { k = "error"; w.WriteString("err", e.Message); }
+                w.WriteString("k", k);
+                w.WriteNumber("s", Idx(le.SourceEntityId));
+                w.WriteNumber("g", Idx(le.TargetEntityId));
+                w.WriteEndObject();
+                kinds[k] = kinds.TryGetValue(k, out var c) ? c + 1 : 1;
+            }
+            w.WriteEndArray();
+
+            // ---- BattleStats: every per-character / per-relic counter the game keeps ----
+            w.WriteStartObject("stats");
+            try { WriteStats(w, logger.Stats, Idx, s); } catch (Exception e) { w.WriteString("error", e.Message); }
+            w.WriteEndObject();
+
+            // ---- roster last: Idx() may have appended stubs while writing the log ----
+            w.WriteStartArray("entities");
+            foreach (var e in s.Roster)
+            {
+                w.WriteStartObject();
+                w.WriteString("guid", e.Guid);
+                if (e.Name != null) w.WriteString("name", e.Name);
+                if (e.Team != null) w.WriteString("team", e.Team);
+                if (e.Entry != null) w.WriteString("entry", e.Entry);
+                if (e.Rank >= 0) w.WriteNumber("rank", e.Rank);
+                if (e.Reserve) w.WriteBoolean("reserve", true);
+                w.WriteStartArray("pos"); w.WriteNumberValue(Math.Round(e.X, 3)); w.WriteNumberValue(Math.Round(e.Y, 3)); w.WriteNumberValue(Math.Round(e.Z, 3)); w.WriteEndArray();
+                w.WriteStartArray("items"); foreach (var it in e.Items) w.WriteStringValue(it); w.WriteEndArray();
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteEndObject();
+
+            BattleRecorderMod.Log.Msg($"fight captured: {n} log entries ({string.Join(", ", kinds.OrderByDescending(kv => kv.Value).Select(kv => kv.Key + " " + kv.Value))}), {s.Roster.Count} entities, timestamps={(timed ? "yes" : $"no ({s.Times.Count} vs {n})")}");
+            return tag;
+        }
+
+        private static void Origin(Utf8JsonWriter w, EffectOriginData o)
+        {
+            w.WriteStartObject("o");
+            w.WriteString("type", o.OriginType.ToString());
+            if (o.OriginId.HasValue) w.WriteString("inst", o.OriginId.Value.ToString());
+            if (o.OriginEntryId.HasValue) w.WriteString("entry", o.OriginEntryId.Value.ToString());
+            w.WriteEndObject();
+        }
+
+        private static void Damage(Utf8JsonWriter w, DamageLogEntry d)
+        {
+            w.WriteNumber("dmg", d.Damage);
+            w.WriteNumber("atk", d.AttackDamage);
+            w.WriteNumber("def", d.Defense);
+            w.WriteNumber("mit", d.MitigatedDamage);
+            w.WriteNumber("sh", d.ShieldDamage);
+            w.WriteString("at", d.AttackType.ToString());
+            if (d.IsCritDamage) w.WriteBoolean("crit", true);
+            w.WriteNumber("cc", Math.Round(Fp(d.CritChance.RawValue), 4));
+        }
+
+        // Most specific type first. Returns the short kind name.
+        private static string WriteEntry(Utf8JsonWriter w, LogEntry le)
+        {
+            var ed = le.TryCast<EffectDamageLogEntry>();
+            if (ed != null) { Damage(w, ed); w.WriteString("eff", ed.EffectId.Guid.ToString()); Origin(w, ed.OriginData); return "effectDamage"; }
+            var ad = le.TryCast<ActiveAbilityDamageLogEntry>();
+            if (ad != null) { Damage(w, ad); w.WriteString("ab", ad.AbilityId.ToString()); return "abilityDamage"; }
+            var aa = le.TryCast<AutoAttackDamageLogEntry>();
+            if (aa != null) { Damage(w, aa); return "autoAttackDamage"; }
+            var dl = le.TryCast<DamageLogEntry>();
+            if (dl != null) { Damage(w, dl); return "damage"; }
+
+            var at = le.TryCast<AttackLogEntry>();
+            if (at != null)
+            {
+                w.WriteBoolean("skill", at.IsSkill); w.WriteString("at", at.AttackType.ToString());
+                w.WriteNumber("dmg", at.Damage); w.WriteNumber("base", at.BaseAttackDamage); w.WriteNumber("atk", at.AttackDamage);
+                return "attack";
+            }
+
+            var eh = le.TryCast<EffectHealingLogEntry>();
+            if (eh != null) { w.WriteNumber("heal", eh.HealAmount); w.WriteString("eff", eh.EffectId.Guid.ToString()); Origin(w, eh.OriginData); return "effectHeal"; }
+            var ah = le.TryCast<ActiveAbilityHealingLogEntry>();
+            if (ah != null) { w.WriteNumber("heal", ah.HealAmount); w.WriteString("ab", ah.ActiveAbilityId.ToString()); return "abilityHeal"; }
+            var h = le.TryCast<HealingLogEntry>();
+            if (h != null) { w.WriteNumber("heal", h.HealAmount); return "heal"; }
+
+            var sa = le.TryCast<StatusAppliedLogEntry>();
+            if (sa != null)
+            {
+                w.WriteString("st", sa.AddedStatus.ToString()); w.WriteNumber("stacks", sa.StacksAdded);
+                w.WriteBoolean("playerSrc", sa.IsPlayerSource); w.WriteBoolean("onEnemy", sa.IsTargetEnemy);
+                var mod = Fp(sa.StatModValue.RawValue); if (mod != 0) w.WriteNumber("mod", Math.Round(mod, 4));
+                Origin(w, sa.OriginData);
+                return "statusApplied";
+            }
+            var sd = le.TryCast<StatusDamageLogEntry>();
+            if (sd != null) { w.WriteNumber("dmg", sd.Damage); w.WriteNumber("sh", sd.ShieldDamage); w.WriteString("st", sd.StatusType.ToString()); w.WriteBoolean("onEnemy", sd.IsTargetEnemy); return "statusDamage"; }
+            var sr = le.TryCast<StatusRemovedLogEntry>();
+            if (sr != null)
+            {
+                w.WriteString("st", sr.RemovedStatus.ToString()); w.WriteNumber("removed", sr.RemovedStacks); w.WriteNumber("left", sr.CurrentStacks);
+                if (sr.IsCleanse) w.WriteBoolean("cleanse", true);
+                w.WriteBoolean("onEnemy", sr.IsTargetEnemy);
+                return "statusRemoved";
+            }
+            var mr = le.TryCast<ManaRegenLogEntry>();
+            if (mr != null) { w.WriteNumber("mana", mr.ManaRegenerated); w.WriteNumber("cur", mr.CurrentMana); return "mana"; }
+            var sto = le.TryCast<StormDamageLogEntry>();
+            if (sto != null) { w.WriteNumber("dmg", sto.Damage); return "stormDamage"; }
+            if (le.TryCast<DeathLogEntry>() != null) return "death";
+            return le.GetIl2CppType().Name;
+        }
+
+        // Every Dictionary<EntityId,int> / Dictionary<RelicId,int> counter on BattleStats, found by reflection
+        // so new counters in future game builds are picked up automatically.
+        private static void WriteStats(Utf8JsonWriter w, BattleStats stats, Func<EntityId, int> idx, Session s)
+        {
+            if (stats == null) return;
+            var relicIndex = new Dictionary<string, int>();
+            if (s.Relics != null) for (int i = 0; i < s.Relics.Count; i++) relicIndex[s.Relics[i].guid] = i;
+
+            foreach (var p in typeof(BattleStats).GetProperties())
+            {
+                var pt = p.PropertyType;
+                if (pt == typeof(Il2CppSystem.Collections.Generic.Dictionary<EntityId, int>))
+                {
+                    var dict = (Il2CppSystem.Collections.Generic.Dictionary<EntityId, int>)p.GetValue(stats);
+                    if (dict == null || dict.Count == 0) continue;
+                    w.WriteStartObject("perCharacter." + p.Name.TrimStart('_'));
+                    foreach (var kv in dict) w.WriteNumber(idx(kv.Key).ToString(), kv.Value);
+                    w.WriteEndObject();
+                }
+                else if (pt == typeof(Il2CppSystem.Collections.Generic.Dictionary<RelicId, int>))
+                {
+                    var dict = (Il2CppSystem.Collections.Generic.Dictionary<RelicId, int>)p.GetValue(stats);
+                    if (dict == null || dict.Count == 0) continue;
+                    w.WriteStartObject("perRelic." + p.Name.TrimStart('_'));
+                    foreach (var kv in dict)
+                    {
+                        var g = kv.Key.Guid.ToString();
+                        w.WriteNumber(relicIndex.TryGetValue(g, out var ri) ? ri.ToString() : g, kv.Value);
+                    }
+                    w.WriteEndObject();
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(BattleLogger), nameof(BattleLogger.Log))]
+    internal static class BattleLoggerLogPatch
+    {
+        private static void Postfix(BattleLogger __instance, Frame f)
+        {
+            try { Recorder.OnLog(__instance, f); }
+            catch (Exception e) { BattleRecorderMod.Log.Warning("log hook: " + e.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(RunSessionService), nameof(RunSessionService.AppendHistory))]
+    internal static class AppendHistoryPatch
+    {
+        private static void Postfix(RunSessionService __instance, SimulationReport simulationReport, ReadOnlyFrame runnerFrameWrapper)
+        {
+            try { Recorder.OnFightFinished(__instance, simulationReport, runnerFrameWrapper); }
+            catch (Exception e) { BattleRecorderMod.Log.Error("recording failed: " + e); }
+        }
+    }
+}
