@@ -1,0 +1,59 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.Application.Progression.Services;
+using MelonLoader;
+
+[assembly: MelonInfo(typeof(StartingRerolls.StartingRerollsMod), "StartingRerolls", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace StartingRerolls
+{
+    // Rerolling the starting hero selection spends a Bonus Token (profile currency, ProgressionData.BonusTokens;
+    // GameRegistryService.ReRollInitialSelection refuses at 0). Runs start with StartingBonusTokens = 0 and the
+    // count is capped by unlocked token slots (UnlockReader.EffectiveBonusTokenCap, max 4).
+    // ProgressionService.OnRunStarted fires once when a NEW run begins (GameRunPersistenceService.Init finds no
+    // save), before the hero picker shows - Continue does not call it. This tops the count up to MinTokens there.
+    public class StartingRerollsMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled, ExceedSlotCap;
+        internal static MelonPreferences_Entry<int> MinTokens;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("StartingRerolls");
+            Enabled = c.CreateEntry("Enabled", true, description: "Top up Bonus Tokens (starting-hero rerolls) when a new run starts.");
+            MinTokens = c.CreateEntry("MinTokens", 2, description: "Every new run starts with at least this many Bonus Tokens.");
+            ExceedSlotCap = c.CreateEntry("ExceedSlotCap", true, description: "If you have fewer unlocked token slots than MinTokens, set the count anyway (the game's own top-up stops at your slot cap).");
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.OnRunStarted))]
+    internal static class OnRunStartedPatch
+    {
+        private static void Postfix(ProgressionService __instance)
+        {
+            if (!StartingRerollsMod.Enabled.Value) return;
+            try
+            {
+                var tokens = __instance.Data.BonusTokens;
+                int before = tokens.Value, min = Math.Max(0, StartingRerollsMod.MinTokens.Value);
+                if (before >= min) { StartingRerollsMod.Log.Msg($"new run: {before} bonus token(s), no top-up needed"); return; }
+
+                // The game's own grant: +1 up to the unlocked-slot cap.
+                while (tokens.Value < min)
+                {
+                    int v = tokens.Value;
+                    __instance.GiveBonusToken(false);
+                    if (tokens.Value == v) break;                // at the slot cap
+                }
+                if (tokens.Value < min && StartingRerollsMod.ExceedSlotCap.Value) tokens.Value = min;
+
+                __instance.SaveProgression();
+                StartingRerollsMod.Log.Msg($"new run: bonus tokens {before} -> {tokens.Value}" + (tokens.Value < min ? " (slot cap reached; ExceedSlotCap is off)" : ""));
+            }
+            catch (Exception e) { StartingRerollsMod.Log.Error("top-up failed: " + e); }
+        }
+    }
+}
