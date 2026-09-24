@@ -1,0 +1,103 @@
+using System;
+using HarmonyLib;
+using MelonLoader;
+using Il2CppEmber.Scopes.Battle.Board.Controllers;
+using Il2CppEmber.Scopes.GameRun.InputHandling;
+using Il2CppEmber.Scopes.GameRun.RunSession.Data;
+
+[assembly: MelonInfo(typeof(AlwaysOnGrid.AlwaysOnGridMod), "AlwaysOnGrid", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace AlwaysOnGrid
+{
+    // Vanilla: BoardController.ResetTiles(dragState) repaints the placement tilemap and then sets
+    // _placementTilemapRenderer.enabled = (dragState != null), so the grid only shows while the
+    // local player is holding a hero. This keeps it visible for the whole pre-fight phase.
+    // Purely local rendering: nothing here touches game state or netcode.
+    public class AlwaysOnGridMod : MelonMod
+    {
+        internal static BoardController Board;
+        internal static bool LocalDragActive;
+        private static bool _weEnabled; // true while the grid is on because of this mod
+
+        private static MelonPreferences_Entry<bool> _enabled;
+        private static MelonPreferences_Entry<bool> _logPhases;
+        private BattleFlowState? _lastState;
+        private bool _stateReadFailed;
+
+        public override void OnInitializeMelon()
+        {
+            var cat = MelonPreferences.CreateCategory("AlwaysOnGrid");
+            _enabled = cat.CreateEntry("Enabled", true, description: "Show the placement grid during Shop/Placement without lifting a hero.");
+            _logPhases = cat.CreateEntry("LogPhaseChanges", true, description: "Write battle-flow phase changes to the MelonLoader log.");
+        }
+
+        internal static bool IsGridPhase(BattleFlowState s) =>
+            s == BattleFlowState.Placement || s == BattleFlowState.Shop;
+
+        internal bool TryGetState(BoardController board, out BattleFlowState state)
+        {
+            state = default;
+            if (_stateReadFailed) return false;
+            try
+            {
+                var reader = board._runSessionDataReader;
+                if (reader == null) return false;
+                state = reader.BattleFlowState.CurrentValue;
+                return true;
+            }
+            catch (Exception e)
+            {
+                _stateReadFailed = true;
+                LoggerInstance.Error("Could not read BattleFlowState; leaving the grid to vanilla behaviour. " + e);
+                return false;
+            }
+        }
+
+        public override void OnLateUpdate()
+        {
+            var board = Board;
+            if (board == null) return; // Unity null check: also true once the board is destroyed
+
+            if (!TryGetState(board, out var state)) return;
+
+            if (_lastState != state)
+            {
+                if (_logPhases.Value) LoggerInstance.Msg($"Battle flow: {_lastState?.ToString() ?? "(none)"} -> {state}");
+                _lastState = state;
+            }
+
+            // While a hero is lifted the game owns the tilemap (valid/invalid colouring).
+            if (!_enabled.Value || LocalDragActive) return;
+
+            var renderer = board._placementTilemapRenderer;
+            if (renderer == null) return;
+
+            bool want = IsGridPhase(state);
+            // Outside the grid phases only switch off what we switched on; vanilla handles the rest
+            // (e.g. its own _showTilesDuringResolution flag).
+            if (want && !renderer.enabled) { renderer.enabled = true; _weEnabled = true; }
+            else if (!want && _weEnabled) { if (renderer.enabled) renderer.enabled = false; _weEnabled = false; }
+        }
+
+        [HarmonyPatch(typeof(BoardController), nameof(BoardController.ResetTiles))]
+        private static class ResetTilesPatch
+        {
+            // Runs after vanilla has repainted and (when dragState == null) hidden the grid;
+            // re-show it in the same frame so a drop doesn't flicker.
+            private static void Postfix(BoardController __instance, HeroDragState dragState)
+            {
+                Board = __instance;
+                LocalDragActive = dragState != null;
+                if (LocalDragActive || !_enabled.Value) return;
+
+                var mod = Melon<AlwaysOnGridMod>.Instance;
+                if (mod != null && mod.TryGetState(__instance, out var state) && IsGridPhase(state))
+                {
+                    var renderer = __instance._placementTilemapRenderer;
+                    if (renderer != null) { renderer.enabled = true; _weEnabled = true; }
+                }
+            }
+        }
+    }
+}

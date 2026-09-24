@@ -1,0 +1,75 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.GameRun.UI.ChunkUI;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using MelonLoader;
+using UnityEngine;
+
+[assembly: MelonInfo(typeof(EventPanelMover.EventPanelMoverMod), "EventPanelMover", "1.1.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace EventPanelMover
+{
+    // Vanilla: the event/challenge effect panel (ChallengePanel, driven by ChallengePanelView) hangs
+    // centred under the battle timer (TopUIPanel), right where top-row enemies' HP bars are.
+    // This pins it to a corner of the HUD instead. Default: top-right, in the gap between the
+    // battle-speed controls (end ~54 units down) and the missions/damage toggles (start ~194 down).
+    // It stays in its original hierarchy, so it still shows/hides exactly as vanilla does.
+    public class EventPanelMoverMod : MelonMod
+    {
+        private const string HudAreaName = "CoreGameUI"; // full-screen HUD rect the offsets are measured from
+
+        private static RectTransform _panel;
+        private static readonly Il2CppStructArray<Vector3> Corners = new(4);
+
+        private static MelonPreferences_Entry<bool> _enabled;
+        private static MelonPreferences_Entry<string> _corner;
+        private static MelonPreferences_Entry<float> _edgeX;
+        private static MelonPreferences_Entry<float> _edgeY;
+
+        public override void OnInitializeMelon()
+        {
+            var cat = MelonPreferences.CreateCategory("EventPanelMover");
+            _enabled = cat.CreateEntry("Enabled", true, description: "Move the event/challenge effect panel away from under the timer.");
+            _corner = cat.CreateEntry("Corner", "TopRight", description: "HUD corner to pin the panel to: TopRight or TopLeft.");
+            _edgeX = cat.CreateEntry("EdgeOffsetX", 0f, description: "UI units in from the chosen side (TopLeft: 70 clears the item column).");
+            _edgeY = cat.CreateEntry("EdgeOffsetY", 65f, description: "UI units down from the top (TopRight: 65 sits under the battle-speed buttons; TopLeft: 100 clears the relics).");
+        }
+
+        public override void OnLateUpdate()
+        {
+            var panel = _panel;
+            if (!_enabled.Value || panel == null || !panel.gameObject.activeInHierarchy) return;
+
+            var area = FindHudArea(panel);
+            if (area == null) return;
+
+            bool right = !string.Equals(_corner.Value, "TopLeft", StringComparison.OrdinalIgnoreCase);
+            area.GetWorldCorners(Corners); // 1 = top-left, 2 = top-right
+            var corner = Corners[right ? 2 : 1];
+            float s = area.lossyScale.x;   // world units per UI unit (the canvas scale factor)
+            float dx = _edgeX.Value * s;
+            var target = new Vector3(right ? corner.x - dx : corner.x + dx, corner.y - _edgeY.Value * s, panel.position.z);
+
+            var pivot = new Vector2(right ? 1f : 0f, 1f);
+            if (panel.pivot != pivot) panel.pivot = pivot;
+            if ((panel.position - target).sqrMagnitude > 0.01f) panel.position = target; // avoid dirtying the canvas every frame
+        }
+
+        private static RectTransform FindHudArea(RectTransform panel)
+        {
+            for (var t = panel.parent; t != null; t = t.parent)
+                if (t.name == HudAreaName) return t.TryCast<RectTransform>();
+            return panel.parent != null && panel.parent.parent != null ? panel.parent.parent.TryCast<RectTransform>() : null;
+        }
+
+        [HarmonyPatch(typeof(ChallengePanelView), nameof(ChallengePanelView.Initialize))]
+        private static class InitializePatch
+        {
+            private static void Postfix(ChallengePanelView __instance)
+            {
+                _panel = __instance.GetComponent<RectTransform>();
+            }
+        }
+    }
+}
