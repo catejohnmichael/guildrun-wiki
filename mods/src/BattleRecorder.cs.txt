@@ -17,7 +17,7 @@ using Il2CppInterop.Runtime.InteropTypes;
 using MelonLoader;
 using MelonLoader.Utils;
 
-[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.1", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.2", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace BattleRecorder
@@ -213,7 +213,7 @@ namespace BattleRecorder
             string tag = "fight";
             w.WriteStartObject();
             w.WriteString("format", "guildrun-battle-record/1");
-            w.WriteString("mod", "BattleRecorder 1.0.1");
+            w.WriteString("mod", "BattleRecorder 1.0.2");
             w.WriteString("recordedAt", DateTime.Now.ToString("o"));
 
             // ---- run context ----
@@ -345,12 +345,24 @@ namespace BattleRecorder
             try { return le.GetIl2CppType().Name; } catch { return "?"; }
         }
 
-        private static void Origin(Utf8JsonWriter w, EffectOriginData o)
+        // Read every part first (any of them can be null on some entries), then write; a missing origin
+        // must not cost the whole entry.
+        private static void Origin(Utf8JsonWriter w, Func<EffectOriginData> get)
         {
+            string type = null, inst = null, entry = null;
+            try
+            {
+                var o = get();
+                try { type = o.OriginType.ToString(); } catch { }
+                try { if (o.OriginId.HasValue) inst = o.OriginId.Value.ToString(); } catch { }
+                try { if (o.OriginEntryId.HasValue) entry = o.OriginEntryId.Value.ToString(); } catch { }
+            }
+            catch { }
+            if (type == null && inst == null && entry == null) return;
             w.WriteStartObject("o");
-            w.WriteString("type", o.OriginType.ToString());
-            if (o.OriginId.HasValue) w.WriteString("inst", o.OriginId.Value.ToString());
-            if (o.OriginEntryId.HasValue) w.WriteString("entry", o.OriginEntryId.Value.ToString());
+            if (type != null) w.WriteString("type", type);
+            if (inst != null) w.WriteString("inst", inst);
+            if (entry != null) w.WriteString("entry", entry);
             w.WriteEndObject();
         }
 
@@ -370,7 +382,7 @@ namespace BattleRecorder
         private static string WriteEntry(Utf8JsonWriter w, LogEntry le)
         {
             var ed = le.TryCast<EffectDamageLogEntry>();
-            if (ed != null) { Damage(w, ed); w.WriteString("eff", ed.EffectId.Guid.ToString()); Origin(w, ed.OriginData); return "effectDamage"; }
+            if (ed != null) { Damage(w, ed); w.WriteString("eff", ed.EffectId.Guid.ToString()); Origin(w, () => ed.OriginData); return "effectDamage"; }
             var ad = le.TryCast<ActiveAbilityDamageLogEntry>();
             if (ad != null) { Damage(w, ad); w.WriteString("ab", ad.AbilityId.ToString()); return "abilityDamage"; }
             var aa = le.TryCast<AutoAttackDamageLogEntry>();
@@ -387,7 +399,7 @@ namespace BattleRecorder
             }
 
             var eh = le.TryCast<EffectHealingLogEntry>();
-            if (eh != null) { w.WriteNumber("heal", eh.HealAmount); w.WriteString("eff", eh.EffectId.Guid.ToString()); Origin(w, eh.OriginData); return "effectHeal"; }
+            if (eh != null) { w.WriteNumber("heal", eh.HealAmount); w.WriteString("eff", eh.EffectId.Guid.ToString()); Origin(w, () => eh.OriginData); return "effectHeal"; }
             var ah = le.TryCast<ActiveAbilityHealingLogEntry>();
             if (ah != null) { w.WriteNumber("heal", ah.HealAmount); w.WriteString("ab", ah.ActiveAbilityId.ToString()); return "abilityHeal"; }
             var h = le.TryCast<HealingLogEntry>();
@@ -399,7 +411,7 @@ namespace BattleRecorder
                 w.WriteString("st", sa.AddedStatus.ToString()); w.WriteNumber("stacks", sa.StacksAdded);
                 w.WriteBoolean("playerSrc", sa.IsPlayerSource); w.WriteBoolean("onEnemy", sa.IsTargetEnemy);
                 var mod = Fp(sa.StatModValue.RawValue); if (mod != 0) w.WriteNumber("mod", Math.Round(mod, 4));
-                Origin(w, sa.OriginData);
+                Origin(w, () => sa.OriginData);
                 return "statusApplied";
             }
             var sd = le.TryCast<StatusDamageLogEntry>();

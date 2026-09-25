@@ -18,7 +18,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using Il2CppTMPro;
 
-[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.1", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.2", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace SaveStates
@@ -35,7 +35,7 @@ namespace SaveStates
     public class SaveStatesMod : MelonMod
     {
         internal static MelonLogger.Instance Log;
-        internal static MelonPreferences_Entry<bool> Enabled, AutoCheckpoints, AllowInEndless;
+        internal static MelonPreferences_Entry<bool> Enabled, AutoCheckpoints, AllowInEndless, AutoContinue;
         internal static MelonPreferences_Entry<string> KeySave, KeyPanel, KeyQuickLoad;
         internal static MelonPreferences_Entry<int> MaxCheckpointsPerRun;
 
@@ -46,6 +46,7 @@ namespace SaveStates
             Enabled = c.CreateEntry("Enabled", true, description: "Turn save states on or off.");
             AutoCheckpoints = c.CreateEntry("AutoCheckpoints", true, description: "Automatically snapshot the start of every fight's placement phase.");
             MaxCheckpointsPerRun = c.CreateEntry("MaxCheckpointsPerRun", 60, description: "Oldest automatic checkpoints beyond this are deleted (manual saves are kept).");
+            AutoContinue = c.CreateEntry("AutoContinue", true, description: "After restoring a snapshot, press Continue automatically (off: the mod stops at the main menu and you press Continue).");
             AllowInEndless = c.CreateEntry("AllowInEndless", false, description: "Allow save states in Endless runs (these submit to the global leaderboard).");
             KeySave = c.CreateEntry("KeySave", "F5", description: "Take a manual snapshot now (Shop/Placement only).");
             KeyPanel = c.CreateEntry("KeyPanel", "F8", description: "Show/hide the snapshot list.");
@@ -95,6 +96,7 @@ namespace SaveStates
         internal static RunSessionService RunSvc;
         internal static PersistenceService PersistSvc;
         internal static MainMenuUIController Menu;
+        internal static float MenuAt;
 
         private static GameRunMetadata _lastHeader;
         private static byte[] _lastPayload;
@@ -332,7 +334,7 @@ namespace SaveStates
             Ui.Hide();
             Ui.Toast($"Loading {s.Label}...", 30f);
             SaveStatesMod.Log.Msg($"restoring {path}");
-            if (Menu != null && RunSvc == null) Go(Phase.Write);          // already at the main menu
+            if (Menu != null && RunSvc == null) Go(Phase.WaitMenu);       // already at the main menu
             else Go(Phase.ToMenu);
         }
 
@@ -358,7 +360,8 @@ namespace SaveStates
                         Go(Phase.WaitMenu);
                         break;
                     case Phase.WaitMenu:
-                        if (Menu != null && InPhase > 1.5f) Go(Phase.Write);   // let the menu finish initialising
+                        // let the menu fully settle (the game is still finishing the run teardown right after it appears)
+                        if (Menu != null && Time.realtimeSinceStartup - MenuAt > 3f) Go(Phase.Write);
                         else if (InPhase > 60f) Fail("main menu never appeared");
                         break;
                     case Phase.Write:
@@ -373,12 +376,18 @@ namespace SaveStates
                         else if (InPhase > 10f) Fail("the game did not write the snapshot to its save file");
                         break;
                     case Phase.Start:
-                        var gfs = Menu._gameFlowService;
+                        if (InPhase < 0.75f) break;                       // small gap after the save file is confirmed
                         _phase = Phase.Idle;
                         var label = _restoring.Label; _restoring = null;
                         RunSvc = null;
-                        gfs.StartRun();
-                        Ui.Toast($"Loaded {label}", 4f);
+                        if (SaveStatesMod.AutoContinue.Value)
+                        {
+                            // Press the real Continue button: its handler does more than GameFlowService.StartRun()
+                            // (tutorial save-point handling etc.). Calling StartRun directly double-started the battle.
+                            Menu._startButton.onClick.Invoke();
+                            Ui.Toast($"Loaded {label}", 4f);
+                        }
+                        else Ui.Toast($"Restored {label} - press Continue", 8f);
                         break;
                 }
             }
@@ -547,7 +556,7 @@ namespace SaveStates
     [HarmonyPatch(typeof(MainMenuUIController), nameof(MainMenuUIController.OnStart))]
     internal static class MenuStartPatch
     {
-        private static void Postfix(MainMenuUIController __instance) { States.Menu = __instance; States.RunSvc = null; }
+        private static void Postfix(MainMenuUIController __instance) { States.Menu = __instance; States.MenuAt = Time.realtimeSinceStartup; States.RunSvc = null; }
     }
 }
 
