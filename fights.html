@@ -392,6 +392,7 @@ var CATS=[['auto','Auto attacks'],['ability','Abilities'],['item','Items'],['rel
 var LINE=['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
 var fights=[],cur=null;
 function $(id){return document.getElementById(id)}
+function AF(n){return typeof n==='number'?n+1:'?'} // the game's act/floor counters are 0-based
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function fmt(n){n=Math.round(n||0);return n>=10000?(n/1000).toFixed(n>=100000?0:1)+'k':n.toLocaleString()}
 function ref(s){if(!s)return null;var m=/([A-Za-z]*)_(\d+)\s*$/.exec(String(s));if(!m)return{p:'',id:null};var p=m[1];if(/tem$/.test(p)&&!/System/.test(p))p='Item';return{p:p,id:+m[2]}}
@@ -401,28 +402,35 @@ function look(s){var r=ref(s);if(!r||r.id==null)return null;var i=r.id;
   case'RankModifier':return window.RMDATA&&RMDATA[i];case'Enemy':return window.EDATA&&EDATA[i];}return null}
 function nm(s){var d=look(s);if(d&&d.n)return d.n;var r=ref(s);return r&&r.id!=null?r.p+' '+r.id:(s||'?')}
 function ic(s){var d=look(s);return d&&d.ic?'<img src="'+esc(d.ic)+'" alt="" loading="lazy">':''}
+function gb(g){var h=String(g||'').replace(/-/g,'');if(h.length!==32)return null;var b=[];for(var i=0;i<16;i++)b.push(parseInt(h.substr(i*2,2),16));
+  return [b[3],b[2],b[1],b[0],b[5],b[4],b[7],b[6]].concat(b.slice(8))}
+function sameGuid(real,read){if(!real||!read)return false;if(real===read)return true;var a=gb(real),c=gb(read);if(!a||!c)return false;
+  for(var i=0;i<12;i++)if(a[i+4]!==c[i])return false;return true} // older records: ids shifted by 4 bytes
+function itemBy(f,g){return(f.items||[]).find(function(z){return sameGuid(z.guid,g)})||null}
+function goodEntry(x){return x&&!/^0{8}-/.test(x)&&!/^guid:/.test(x)}
 function srcOf(e,f){ // -> [category, label, entryRef]
   switch(e.k){
   case'autoAttackDamage':return['auto','Auto attack',null];
   case'abilityDamage':return['ability',nm(e.ab),e.ab];
   case'statusDamage':return['status',(e.st||'Status')+' ticks',null];
   case'stormDamage':return['other','Storm',null];
-  case'effectDamage':var o=e.o||{},t=o.type||'';
-    if(/^Item/.test(t))return['item',nm(o.entry),o.entry];
-    if(/Relic/.test(t))return['relic',nm(o.entry),o.entry];
-    if(t==='ActiveAbility')return['ability',nm(o.entry),o.entry];
-    if(t==='PassiveAbility')return['other',nm(o.entry)+' (passive)',o.entry];
-    if(t==='RankModifier')return['other',nm(o.entry)+' (rank upgrade)',o.entry];
-    return['other',t||'Effect',o.entry];
+  case'effectDamage':var o=e.o||{},t=o.type||'',en=goodEntry(o.entry)?o.entry:null;
+    if(/^Item/.test(t)){if(!en){var it=itemBy(f,o.inst);en=it&&it.entry}return['item',en?nm(en):'Item effect',en]}
+    if(/Relic/.test(t))return['relic',en?nm(en):'Relic effect',en];
+    if(t==='ActiveAbility')return['ability',en?nm(en):'Ability effect',en];
+    if(t==='PassiveAbility')return['ability',(en?nm(en):'Passive ability')+' (passive)',en];
+    if(t==='RankModifier')return['other',(en?nm(en):'Rank upgrade')+' (rank upgrade)',en];
+    return['other',t||'Effect',en];
   }return['other',e.k,null]}
 var DMG={autoAttackDamage:1,abilityDamage:1,effectDamage:1,damage:1,statusDamage:1,stormDamage:1};
 function analyse(f){
-  var E=f.entities.map(function(x,i){var d=look(x.entry);return{i:i,x:x,name:(d&&d.n)||x.name||('Unit '+i),icon:ic(x.entry),team:x.team||'?',
+  var E=f.entities.map(function(x,i){var d=look(x.entry);var anon=/^0{8}-0{4}/.test(x.guid||'');
+    return{i:i,x:x,name:anon?'Relics & effects':((d&&d.n)||x.name||('Unit '+i)),icon:ic(x.entry),team:anon?'Effects':(x.team||'?'),
     dealt:{},total:0,taken:0,mit:0,shield:0,heal:0,healRecv:0,kills:0,died:null,crits:0,hits:0,casts:0,series:[]}});
   var seen={};E.forEach(function(e){var k=e.name;seen[k]=(seen[k]||0)+1;if(seen[k]>1)e.name+=' #'+seen[k]});
   var sources={},timeline=[];
   f.log.forEach(function(e){var S=E[e.s],T=E[e.g];if(!S||!T)return;
-    if(DMG[e.k]){var a=(e.dmg||0);var c=srcOf(e,f);S.dealt[c[0]]=(S.dealt[c[0]]||0)+a;S.total+=a;T.taken+=a;T.mit+=(e.mit||0);T.shield+=(e.sh||0);
+    if(DMG[e.k]){var a=(e.dmg||0)+(e.sh||0);var c=srcOf(e,f);S.dealt[c[0]]=(S.dealt[c[0]]||0)+a;S.total+=a;T.taken+=a;T.mit+=(e.mit||0);T.shield+=(e.sh||0);
       if(e.crit)S.crits++;if(e.k!=='statusDamage')S.hits++;
       var key=S.i+'|'+c[1];var src=sources[key]||(sources[key]={cat:c[0],label:c[1],entry:c[2],owner:S,total:0,n:0});src.total+=a;src.n++;
       if(f.timestamps&&S.team==='Players')S.series.push([e.t,S.total]);}
@@ -430,22 +438,30 @@ function analyse(f){
     else if(e.k==='attack'&&e.skill)S.casts++;
     else if(e.k==='death'){T.died=f.timestamps?e.t:true;if(S!==T)S.kills++;timeline.push(e)}
   });
-  var stats=f.stats||{},game=stats['perCharacter.damageDealtPerCharacter'],match=null;
-  if(game){match=true;E.forEach(function(e){var g=game[e.i];if(g!=null&&Math.abs(g-e.total)>1)match=false})}
-  return{E:E,sources:Object.keys(sources).map(function(k){return sources[k]}).sort(function(a,b){return b.total-a.total}),match:match}}
+  // Heroes: the game's own counters (what its damage panel shows): auto + ability (incl. passive/ability effects)
+  // + item, and the remainder is status damage credited to whoever applied the stacks. Enemies: the combat log.
+  var S=f.stats||{};function gs(k,i){var d=S['perCharacter.'+k];return d&&d[i]!=null?d[i]:null}
+  var list=Object.keys(sources).map(function(k){return sources[k]});
+  E.forEach(function(e){var t=gs('damageDealtPerCharacter',e.i);if(t==null||t<=0)return;
+    var au=gs('autoAttackDamageDealtPerCharacter',e.i)||0,ab=gs('abilityDamageDealtPerCharacter',e.i)||0,it=gs('itemDamageDealtPerCharacter',e.i)||0,st=Math.max(0,t-au-ab-it);
+    e.game=true;e.dealt={auto:au,ability:ab,item:it,status:st};e.total=t;
+    var tk=gs('damageTakenPerCharacter',e.i);if(tk!=null)e.taken=tk;var hl=gs('healedAppliedPerCharacter',e.i);if(hl!=null)e.heal=hl;
+    if(st>0)list.push({cat:'status',label:'Status effects applied',entry:null,owner:e,total:st,n:0,game:true})});
+  return{E:E,sources:list.sort(function(a,b){return b.total-a.total}),game:E.some(function(e){return e.game})}}
 function tip(el){var t=$('fvtip');el.addEventListener('mousemove',function(ev){var m=ev.target.closest('[data-tip]');if(!m){t.style.display='none';return}
   t.innerHTML=m.getAttribute('data-tip');t.style.display='block';t.style.left=Math.min(ev.clientX+14,innerWidth-330)+'px';t.style.top=(ev.clientY+14)+'px'});
   el.addEventListener('mouseleave',function(){t.style.display='none'})}
 function legend(){return'<div class="legend">'+CATS.map(function(c){return'<span><i style="background:var(--c-'+c[0]+')"></i>'+c[1]+'</span>'}).join('')+'</div>'}
 function teamTable(A,team,maxT){var rows=A.E.filter(function(e){return e.team===team&&(e.total||e.taken||e.heal)});if(!rows.length)return'<p class="muted">No activity recorded.</p>';
   rows.sort(function(a,b){return b.total-a.total});
-  return'<div class="tw"><table class="ft"><thead><tr><th>Unit</th><th>Items</th><th>Damage dealt by source</th><th>Dealt</th><th>Taken</th><th>Mitigated</th><th>Healing done</th><th>Kills</th><th>Crits</th><th>Died</th></tr></thead><tbody>'+
-  rows.map(function(e){var items=(e.x.items||[]).map(function(g){var it=(cur.items||[]).find(function(z){return z.guid===g});return it?'<span data-tip="'+esc(nm(it.entry))+'">'+(ic(it.entry)||esc(nm(it.entry)))+'</span>':''}).join('');
+  return'<div class="tw"><table class="ft"><thead><tr><th>Unit</th><th>Items</th><th>Damage dealt by source</th><th>Dealt</th><th>Taken</th><th data-tip="Damage blocked by defense. Negative: defense was pushed below zero (e.g. by Frost), so hits were amplified.">Mitigated</th><th>Healing done</th><th>Kills</th><th>Crits</th><th>Died</th></tr></thead><tbody>'+
+  rows.map(function(e){var mine=(cur.items||[]).filter(function(z){return z.owner===e.i});if(!mine.length)mine=(e.x.items||[]).map(function(g){return itemBy(cur,g)}).filter(Boolean);
+    var items=mine.map(function(it){return'<span data-tip="'+esc(nm(it.entry))+'">'+(ic(it.entry)||esc(nm(it.entry)))+'</span>'}).join('');
     var bar=CATS.filter(function(c){return e.dealt[c[0]]}).map(function(c){var v=e.dealt[c[0]];return'<i style="width:'+(v/maxT*100)+'%;background:var(--c-'+c[0]+')" data-tip="<b>'+esc(e.name)+'</b><br>'+c[1]+': '+fmt(v)+' ('+Math.round(v/e.total*100)+'%)"></i>'}).join('');
     return'<tr><td><span class="who">'+e.icon+esc(e.name)+(e.x.rank>=0&&team==='Players'?' <span class="muted small">R'+e.x.rank+'</span>':'')+'</span></td><td class="items">'+items+'</td><td><div class="bar">'+bar+'</div></td>'+
       '<td class="n">'+fmt(e.total)+'</td><td class="n">'+fmt(e.taken)+'</td><td class="n">'+fmt(e.mit)+'</td><td class="n">'+fmt(e.heal)+'</td><td class="n">'+e.kills+'</td><td class="n">'+e.crits+'</td><td class="n">'+(e.died==null?'—':(e.died===true?'yes':e.died.toFixed(1)+'s'))+'</td></tr>'}).join('')+'</tbody></table></div>'}
 function sourcesList(A){var list=A.sources.filter(function(s){return s.owner.team==='Players'}).slice(0,25);if(!list.length)return'';var max=list[0].total||1;
-  return list.map(function(s){return'<div class="srow" data-tip="<b>'+esc(s.label)+'</b> on '+esc(s.owner.name)+'<br>'+fmt(s.total)+' damage over '+s.n+' hits"><span class="who">'+(s.entry?ic(s.entry):'')+esc(s.label)+' <span class="muted small">'+esc(s.owner.name)+'</span></span><div class="track"><i style="width:'+(s.total/max*100)+'%;background:var(--c-'+s.cat+')"></i></div><span class="n">'+fmt(s.total)+'</span></div>'}).join('')}
+  return list.map(function(s){return'<div class="srow" data-tip="<b>'+esc(s.label)+'</b> on '+esc(s.owner.name)+'<br>'+fmt(s.total)+' damage'+(s.game?' (the game\u2019s count of status damage credited to this hero)':' over '+s.n+' hits')+'"><span class="who">'+(s.entry?ic(s.entry):'')+esc(s.label)+' <span class="muted small">'+esc(s.owner.name)+'</span></span><div class="track"><i style="width:'+(s.total/max*100)+'%;background:var(--c-'+s.cat+')"></i></div><span class="n">'+fmt(s.total)+'</span></div>'}).join('')}
 function lineChart(A,f){if(!f.timestamps)return'<p class="muted">This record has no timestamps (RecordTimestamps was off, or not every entry was stamped).</p>';
   var H=A.E.filter(function(e){return e.team==='Players'&&e.series.length}).sort(function(a,b){return b.total-a.total}).slice(0,8);if(!H.length)return'';
   var W=760,Ht=240,pl=46,pr=110,pt=10,pb=26,dur=f.result.durationSeconds||1,max=Math.max.apply(null,H.map(function(e){return e.total}))||1;
@@ -480,10 +496,10 @@ function show(f){cur=f;var A=analyse(f);
   document.querySelectorAll('.fitem').forEach(function(x){x.classList.toggle('sel',x._f===f)});
   var r=f.run||{},res=f.result||{},maxT=Math.max.apply(null,A.E.map(function(e){return e.total}))||1;
   var heroes=A.E.filter(function(e){return e.team==='Players'}),hd=heroes.reduce(function(a,e){return a+e.total},0),ht=heroes.reduce(function(a,e){return a+e.taken},0);
-  $('fvmain').innerHTML='<h2 style="margin-top:0">Act '+(r.act||'?')+' · Floor '+(r.floor||'?')+' — <span class="'+(res.outcome==='Victory'?'win':'loss')+'">'+esc(res.outcome||'?')+'</span></h2>'+
+  $('fvmain').innerHTML='<h2 style="margin-top:0">Act '+AF(r.act)+' · Floor '+AF(r.floor)+' — <span class="'+(res.outcome==='Victory'?'win':'loss')+'">'+esc(res.outcome||'?')+'</span></h2>'+
    '<div class="kpis"><div class="kpi"><b>'+(res.durationSeconds||0).toFixed(1)+'s</b><span>fight length</span></div><div class="kpi"><b>'+fmt(hd)+'</b><span>hero damage dealt</span></div><div class="kpi"><b>'+fmt(hd/(res.durationSeconds||1))+'</b><span>hero damage / second</span></div><div class="kpi"><b>'+fmt(ht)+'</b><span>hero damage taken</span></div><div class="kpi"><b>'+f.log.length.toLocaleString()+'</b><span>combat events</span></div></div>'+
    '<p class="small muted">'+esc(f._name)+' · recorded '+esc((f.recordedAt||'').replace('T',' ').slice(0,19))+(r.encounter?' · encounter '+esc(r.encounter):'')+' · combat seed '+esc(r.combatSeed)+
-   (A.match===true?' · <span class="ok">totals match the game’s own counters</span>':A.match===false?' · <span class="bad">totals differ from the game’s counters</span>':'')+'</p>'+
+   (A.game?' · hero totals are the game’s own counters (as in its damage panel); the breakdown by source comes from the combat log':'')+'</p>'+
    '<h3>Heroes</h3>'+legend()+teamTable(A,'Players',maxT)+'<h3>Enemies</h3>'+teamTable(A,'Enemies',maxT)+
    '<h3>Where the hero damage came from</h3><p class="small muted">Every damage source, per hero: auto attacks, each ability, each item, each relic, status ticks. Top 25.</p>'+sourcesList(A)+
    '<h3>Damage over time</h3>'+lineChart(A,f)+'<h3>Combat log</h3>'+logView(A,f);
@@ -494,11 +510,11 @@ function runView(){var box=$('fvrun');if(!cur||!cur.run||!cur.run.runId){box.inn
   same.sort(function(a,b){return(a.run.totalFloor||0)-(b.run.totalFloor||0)});
   var per={};same.forEach(function(f,fi){var A=analyse(f);A.sources.forEach(function(s){if(s.owner.team!=='Players'||(s.cat!=='item'&&s.cat!=='relic'))return;var k=s.cat+'|'+s.label;var p=per[k]||(per[k]={cat:s.cat,label:s.label,entry:s.entry,v:[]});p.v[fi]=(p.v[fi]||0)+s.total})});
   var rows=Object.keys(per).map(function(k){var p=per[k];p.sum=p.v.reduce(function(a,b){return a+(b||0)},0);return p}).sort(function(a,b){return b.sum-a.sum});
-  box.innerHTML='<h2>This run: item & relic damage per fight</h2><p class="small muted">'+same.length+' recorded fights from this run.</p><div class="tw"><table class="ft"><thead><tr><th>Source</th>'+same.map(function(f){return'<th>A'+f.run.act+' F'+f.run.floor+'</th>'}).join('')+'<th>Total</th></tr></thead><tbody>'+
+  box.innerHTML='<h2>This run: item & relic damage per fight</h2><p class="small muted">'+same.length+' recorded fights from this run.</p><div class="tw"><table class="ft"><thead><tr><th>Source</th>'+same.map(function(f){return'<th>A'+AF(f.run.act)+' F'+AF(f.run.floor)+'</th>'}).join('')+'<th>Total</th></tr></thead><tbody>'+
    rows.map(function(p){return'<tr><td><span class="who">'+(p.entry?ic(p.entry):'')+'<i style="width:8px;height:8px;border-radius:2px;display:inline-block;background:var(--c-'+p.cat+')"></i>'+esc(p.label)+'</span></td>'+same.map(function(_,i){return'<td class="n">'+(p.v[i]?fmt(p.v[i]):'<span class="muted">—</span>')+'</td>'}).join('')+'<td class="n"><b>'+fmt(p.sum)+'</b></td></tr>'}).join('')+'</tbody></table></div>'}
 function list(){fights.sort(function(a,b){return(b.recordedAt||'').localeCompare(a.recordedAt||'')});
   $('fvlist').innerHTML='';fights.forEach(function(f){var d=document.createElement('div');d.className='fitem';d._f=f;var r=f.run||{},res=f.result||{};
-    d.innerHTML='<span class="v">A'+(r.act||'?')+' F'+(r.floor||'?')+'</span> <span class="'+(res.outcome==='Victory'?'win':'loss')+'">'+esc(res.outcome||'?')+'</span> <span class="muted">'+(res.durationSeconds||0).toFixed(0)+'s</span><br><span class="muted small">'+esc((f.recordedAt||'').replace('T',' ').slice(0,16))+'</span>';
+    d.innerHTML='<span class="v">A'+AF(r.act)+' F'+AF(r.floor)+'</span> <span class="'+(res.outcome==='Victory'?'win':'loss')+'">'+esc(res.outcome||'?')+'</span> <span class="muted">'+(res.durationSeconds||0).toFixed(0)+'s</span><br><span class="muted small">'+esc((f.recordedAt||'').replace('T',' ').slice(0,16))+'</span>';
     d.onclick=function(){show(f)};$('fvlist').appendChild(d)})}
 function load(files){var todo=[].slice.call(files).filter(function(x){return/\.json$/i.test(x.name)}),left=todo.length,bad=0;if(!left)return;
   todo.forEach(function(file){var rd=new FileReader();rd.onload=function(){try{var f=JSON.parse(rd.result);if(!/guildrun-battle-record/.test(f.format||''))throw 0;f._name=file.name;

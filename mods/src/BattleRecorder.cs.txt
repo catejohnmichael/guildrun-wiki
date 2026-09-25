@@ -17,7 +17,7 @@ using Il2CppInterop.Runtime.InteropTypes;
 using MelonLoader;
 using MelonLoader.Utils;
 
-[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.2", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.3", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace BattleRecorder
@@ -131,17 +131,6 @@ namespace BattleRecorder
                         try { info.Team = c.Team.ToString(); } catch { }
                         try { info.Rank = c.Rank; } catch { }
                         try { info.Entry = EntryId(c.BalancingEntry); } catch { }
-                        try
-                        {
-                            var items = c.EquippedItemIds;
-                            if (items != null)
-                                for (int k = 0; k < items.Count; k++)
-                                {
-                                    var it = items[k];
-                                    if (it.HasValue) info.Items.Add(it.Value.Guid.ToString());
-                                }
-                        }
-                        catch { }
                     }
                     try
                     {
@@ -160,8 +149,12 @@ namespace BattleRecorder
                 for (int i = 0; i < f.Items.Count; i++)
                 {
                     var it = f.Items[i];
-                    s.Items.Add((it.Id.Guid.ToString(), EntryId(it.ItemEntry), it.OwnerEntityId.HasValue ? G(it.OwnerEntityId.Value) : null));
+                    s.Items.Add((it.Id.Guid.ToString(), EntryId(it.ItemEntry), Raw.NullableGuid(it.Pointer, Raw.ItemEntityOwner)));
                 }
+            foreach (var (g, _, owner) in s.Items)
+                if (owner != null)
+                    foreach (var e in s.Roster)
+                        if (e.Guid == owner) e.Items.Add(g);
             s.Relics = new();
             if (f.Relics != null)
                 for (int i = 0; i < f.Relics.Count; i++)
@@ -212,8 +205,8 @@ namespace BattleRecorder
 
             string tag = "fight";
             w.WriteStartObject();
-            w.WriteString("format", "guildrun-battle-record/1");
-            w.WriteString("mod", "BattleRecorder 1.0.2");
+            w.WriteString("format", "guildrun-battle-record/2");
+            w.WriteString("mod", "BattleRecorder 1.0.3");
             w.WriteString("recordedAt", DateTime.Now.ToString("o"));
 
             // ---- run context ----
@@ -382,7 +375,7 @@ namespace BattleRecorder
         private static string WriteEntry(Utf8JsonWriter w, LogEntry le)
         {
             var ed = le.TryCast<EffectDamageLogEntry>();
-            if (ed != null) { Damage(w, ed); w.WriteString("eff", ed.EffectId.Guid.ToString()); Origin(w, () => ed.OriginData); return "effectDamage"; }
+            if (ed != null) { Damage(w, ed); w.WriteString("eff", ed.EffectId.Guid.ToString()); Raw.Origin(w, ed, Raw.EffectDamageOrigin); return "effectDamage"; }
             var ad = le.TryCast<ActiveAbilityDamageLogEntry>();
             if (ad != null) { Damage(w, ad); w.WriteString("ab", ad.AbilityId.ToString()); return "abilityDamage"; }
             var aa = le.TryCast<AutoAttackDamageLogEntry>();
@@ -399,7 +392,7 @@ namespace BattleRecorder
             }
 
             var eh = le.TryCast<EffectHealingLogEntry>();
-            if (eh != null) { w.WriteNumber("heal", eh.HealAmount); w.WriteString("eff", eh.EffectId.Guid.ToString()); Origin(w, () => eh.OriginData); return "effectHeal"; }
+            if (eh != null) { w.WriteNumber("heal", eh.HealAmount); w.WriteString("eff", eh.EffectId.Guid.ToString()); Raw.Origin(w, eh, Raw.EffectHealingOrigin); return "effectHeal"; }
             var ah = le.TryCast<ActiveAbilityHealingLogEntry>();
             if (ah != null) { w.WriteNumber("heal", ah.HealAmount); w.WriteString("ab", ah.ActiveAbilityId.ToString()); return "abilityHeal"; }
             var h = le.TryCast<HealingLogEntry>();
@@ -411,7 +404,7 @@ namespace BattleRecorder
                 w.WriteString("st", sa.AddedStatus.ToString()); w.WriteNumber("stacks", sa.StacksAdded);
                 w.WriteBoolean("playerSrc", sa.IsPlayerSource); w.WriteBoolean("onEnemy", sa.IsTargetEnemy);
                 var mod = Fp(sa.StatModValue.RawValue); if (mod != 0) w.WriteNumber("mod", Math.Round(mod, 4));
-                Origin(w, () => sa.OriginData);
+                Raw.Origin(w, sa, Raw.StatusAppliedOrigin);
                 return "statusApplied";
             }
             var sd = le.TryCast<StatusDamageLogEntry>();
@@ -464,6 +457,60 @@ namespace BattleRecorder
                     w.WriteEndObject();
                 }
             }
+        }
+    }
+
+    // Il2CppInterop reads Nullable<struct> fields 4 bytes off (Nullable<Guid>/<EntityId>/<ItemId> came back shifted,
+    // Nullable<BalancingEntryId> as an empty Guid). These read the game's own memory layout instead, using the
+    // field offsets from the IL2CPP dump (build 25461680). Every read is sanity-checked; on doubt it returns null.
+    internal static unsafe class Raw
+    {
+        // object field offsets (include the 0x10 object header)
+        internal const int EffectDamageOrigin = 0x68;   // EffectDamageLogEntry.OriginData
+        internal const int EffectHealingOrigin = 0x48;  // EffectHealingLogEntry.OriginData
+        internal const int StatusAppliedOrigin = 0x40;  // StatusAppliedLogEntry.OriginData
+        internal const int ItemEntityOwner = 0x20;      // ItemEntity.OwnerEntityId (Nullable<EntityId>)
+
+        // Nullable<Guid-like struct>: bool hasValue @+0, 16-byte Guid @+4
+        internal static string NullableGuid(IntPtr obj, int offset)
+        {
+            if (obj == IntPtr.Zero) return null;
+            byte* p = (byte*)obj + offset;
+            if (p[0] != 1) return null;
+            return new Guid(new ReadOnlySpan<byte>(p + 4, 16)).ToString();
+        }
+
+        // EffectOriginData: OriginType int @0x0, Nullable<Guid> OriginId @0x4, Nullable<BalancingEntryId> OriginEntryId @0x18
+        // BalancingEntryId (value @+8 in its Nullable): _serializedGuid @0x0, _sequentialId @0x8, _prefix @0x10, _mode @0x18, Guid @0x1C
+        internal static void Origin(Utf8JsonWriter w, Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase entry, int offset)
+        {
+            string type = null, inst = null, entryId = null;
+            try
+            {
+                byte* p = (byte*)entry.Pointer + offset;
+                int t = *(int*)p;
+                if (t >= 0 && t <= 16) type = ((EffectOriginType)t).ToString();
+                inst = NullableGuid((IntPtr)p, 0x4);
+                if (p[0x18] == 1)
+                {
+                    byte* v = p + 0x20;
+                    int seq = *(int*)(v + 0x8);
+                    IntPtr prefix = *(IntPtr*)(v + 0x10);
+                    if (prefix != IntPtr.Zero && seq >= 0) entryId = Il2CppInterop.Runtime.IL2CPP.Il2CppStringToManaged(prefix) + "_" + seq;
+                    else
+                    {
+                        var g = new Guid(new ReadOnlySpan<byte>(v + 0x1C, 16));
+                        if (g != Guid.Empty) entryId = "guid:" + g;
+                    }
+                }
+            }
+            catch { }
+            if (type == null && inst == null && entryId == null) return;
+            w.WriteStartObject("o");
+            if (type != null) w.WriteString("type", type);
+            if (inst != null) w.WriteString("inst", inst);
+            if (entryId != null) w.WriteString("entry", entryId);
+            w.WriteEndObject();
         }
     }
 

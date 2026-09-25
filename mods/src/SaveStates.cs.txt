@@ -18,7 +18,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using Il2CppTMPro;
 
-[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.2", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.3", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace SaveStates
@@ -244,7 +244,7 @@ namespace SaveStates
                 {
                     Kind = kind, RunId = runId, Act = act, Floor = floor, TotalFloor = total, Flow = flow.ToString(),
                     Created = now.ToString("o"), Header = HeaderBytes(_lastHeader), Payload = _lastPayload,
-                    Label = $"Act {act} Floor {floor}" + (kind == "checkpoint" ? " - fight start" : " - manual " + now.ToString("HH:mm:ss")),
+                    Label = $"Act {act + 1} Floor {floor + 1}" + (kind == "checkpoint" ? " - fight start" : " - manual " + now.ToString("HH:mm:ss")),
                 };
                 s.Path = Path.Combine(dir, $"{now:yyyyMMdd-HHmmss}_{kind}_A{act}F{floor}.gss.json");
                 var json = JsonSerializer.Serialize(new Dictionary<string, object>
@@ -292,7 +292,9 @@ namespace SaveStates
                 if (parts.Length < 3) continue;
                 DateTime.TryParseExact(parts[0], "yyyyMMdd-HHmmss", null, System.Globalization.DateTimeStyles.None, out var when);
                 var af = parts[2].Replace(".gss.json", "");
-                var label = (parts[1] == "checkpoint" ? "Fight start " : "Manual ") + af.Replace("A", "Act ").Replace("F", " Floor ") + "  " + when.ToString("HH:mm:ss");
+                var m = System.Text.RegularExpressions.Regex.Match(af, @"^A(\d+)F(\d+)$");   // file names keep the game's 0-based counters
+                var where = m.Success ? $"Act {int.Parse(m.Groups[1].Value) + 1} Floor {int.Parse(m.Groups[2].Value) + 1}" : af;
+                var label = (parts[1] == "checkpoint" ? "Fight start  " : "Manual  ") + where + "  " + when.ToString("HH:mm:ss");
                 list.Add((f, label, parts[1], when));
             }
             return list.OrderByDescending(x => x.Item4).ToList();
