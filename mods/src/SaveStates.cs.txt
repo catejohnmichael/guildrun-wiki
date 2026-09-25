@@ -15,8 +15,10 @@ using MelonLoader;
 using MelonLoader.Utils;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using Il2CppTMPro;
 
-[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(SaveStates.SaveStatesMod), "SaveStates", "1.0.1", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace SaveStates
@@ -61,12 +63,9 @@ namespace SaveStates
             }
             catch (Exception e) { Log.Warning("input: " + e.Message); }
             States.Tick();
+            try { Ui.Update(); } catch (Exception e) { Log.Warning("ui: " + e.Message); }
         }
 
-        public override void OnGUI()
-        {
-            if (Enabled.Value) Ui.Draw();
-        }
 
         private static readonly Dictionary<string, Key> KeyCache = new();
         private static bool Pressed(string name)
@@ -110,6 +109,12 @@ namespace SaveStates
         private static DateTime _writeStartUtc;
 
         internal static bool Restoring => _phase != Phase.Idle;
+
+        internal static void CaptureRun(RunSessionService svc, string via)
+        {
+            if (RunSvc == null || RunSvc.Pointer != svc.Pointer) SaveStatesMod.Log.Msg($"run session found (via {via})");
+            RunSvc = svc;
+        }
         internal static string Root => Path.Combine(MelonEnvironment.UserDataDirectory, "SaveStates");
 
         // ---------------- context ----------------
@@ -155,6 +160,7 @@ namespace SaveStates
         // ---------------- capture ----------------
         internal static void OnSaveRun(PersistenceService svc, GameRunMetadata header, Il2CppStructArray<byte> payload)
         {
+            if (PersistSvc == null) SaveStatesMod.Log.Msg("game save hook active");
             PersistSvc = svc;
             if (Restoring || payload == null) return;              // our own restore write, or the save the game makes on the way to the menu
             _lastHeader = header;
@@ -398,59 +404,121 @@ namespace SaveStates
         }
     }
 
+    // On-screen UI built from the game's own UI stack (uGUI canvas + TextMeshPro). IMGUI (OnGUI) does not
+    // render in this game, so nothing here uses it. Keyboard-driven: F8 opens the list, 1-9 load, PgUp/PgDn page.
     internal static class Ui
     {
-        private static bool _open;
-        private static string _toast;
+        private const int PerPage = 9;
+        private static GameObject _root, _toastBox, _panelBox;
+        private static TextMeshProUGUI _toastText, _panelText;
         private static float _toastUntil;
+        private static bool _open, _broken;
         private static int _page;
-        private static List<(string path, string label, string kind, DateTime when)> _cache;
-        private static bool _guiBroken;
+        private static List<(string path, string label, string kind, DateTime when)> _list = new();
 
         internal static void Toast(string msg, float seconds = 3.5f)
         {
-            _toast = msg; _toastUntil = Time.realtimeSinceStartup + seconds;
             SaveStatesMod.Log.Msg(msg);
+            if (!Ensure()) return;
+            _toastText.text = msg;
+            _toastBox.SetActive(true);
+            _toastUntil = Time.realtimeSinceStartup + seconds;
         }
-        internal static void Toggle() { _open = !_open; _page = 0; _cache = _open ? States.List(States.LatestRunId()) : null; }
-        internal static void Hide() { _open = false; }
 
-        internal static void Draw()
+        internal static void Toggle()
         {
-            if (_guiBroken) return;
+            _open = !_open; _page = 0;
+            if (_open) _list = States.List(States.LatestRunId());
+            SaveStatesMod.Log.Msg(_open ? $"snapshot list opened ({_list.Count} snapshots)" : "snapshot list closed");
+            Render();
+        }
+
+        internal static void Hide() { _open = false; Render(); }
+
+        internal static void Update()
+        {
+            if (_toastBox != null && _toastBox.activeSelf && Time.realtimeSinceStartup > _toastUntil) _toastBox.SetActive(false);
+            if (!_open) return;
+            var kb = Keyboard.current;
+            if (kb == null) return;
+            if (kb[Key.PageDown].wasPressedThisFrame && (_page + 1) * PerPage < _list.Count) { _page++; Render(); }
+            if (kb[Key.PageUp].wasPressedThisFrame && _page > 0) { _page--; Render(); }
+            for (int d = 1; d <= PerPage; d++)
+            {
+                if (!kb[Key.Digit1 + (d - 1)].wasPressedThisFrame && !kb[Key.Numpad1 + (d - 1)].wasPressedThisFrame) continue;
+                int i = _page * PerPage + d - 1;
+                if (i < _list.Count) States.Load(_list[i].path);
+                return;
+            }
+        }
+
+        private static void Render()
+        {
+            if (!Ensure()) return;
+            _panelBox.SetActive(_open);
+            if (!_open) return;
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<b>Save states</b>  <color=#9fb0c3><size=80%>").Append(SaveStatesMod.KeyPanel.Value).Append(" to close</size></color>\n\n");
+            if (_list.Count == 0) sb.Append("<color=#c3c2b7>No snapshots for this run yet.\nThe start of every fight is saved automatically.</color>\n");
+            int n = 1;
+            foreach (var s in _list.Skip(_page * PerPage).Take(PerPage))
+                sb.Append("<b><color=#ffd479>").Append(n++).Append("</color></b>   ").Append(s.label).Append('\n');
+            int pages = Math.Max(1, (_list.Count + PerPage - 1) / PerPage);
+            sb.Append("\n<size=80%><color=#9fb0c3>1-9 load  ·  ");
+            if (pages > 1) sb.Append("PgUp/PgDn page ").Append(_page + 1).Append('/').Append(pages).Append("  ·  ");
+            sb.Append(SaveStatesMod.KeySave.Value).Append(" save now  ·  ").Append(SaveStatesMod.KeyQuickLoad.Value).Append(" load latest</color></size>");
+            _panelText.text = sb.ToString();
+        }
+
+        private static bool Ensure()
+        {
+            if (_broken) return false;
+            if (_root != null) return true;
             try
             {
-                if (_toast != null && Time.realtimeSinceStartup < _toastUntil)
-                {
-                    var r = new Rect(Screen.width / 2f - 260, 70, 520, 34);
-                    GUI.Box(r, "");
-                    GUI.Label(new Rect(r.x + 12, r.y + 8, r.width - 24, 22), _toast);
-                }
-                if (!_open) return;
+                _root = new GameObject("SaveStatesOverlay");
+                UnityEngine.Object.DontDestroyOnLoad(_root);
+                var canvas = _root.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 30000;
+                var scaler = _root.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920, 1080);
+                scaler.matchWidthOrHeight = 0.5f;
 
-                const int perPage = 10, rowH = 30;
-                var list = _cache ?? new();
-                float w = 460, h = 110 + perPage * rowH;
-                var box = new Rect(Screen.width - w - 30, 120, w, h);
-                GUI.Box(box, $"Save states - {SaveStatesMod.KeyPanel.Value} to close");
-                float y = box.y + 30;
-                if (list.Count == 0) GUI.Label(new Rect(box.x + 14, y, w - 28, 24), "No snapshots for this run yet. Fight starts are saved automatically.");
-                foreach (var s in list.Skip(_page * perPage).Take(perPage))
-                {
-                    GUI.Label(new Rect(box.x + 14, y + 4, w - 120, 24), s.label);
-                    if (GUI.Button(new Rect(box.x + w - 96, y, 80, 26), "Load")) { States.Load(s.path); return; }
-                    y += rowH;
-                }
-                float by = box.y + h - 40;
-                if (_page > 0 && GUI.Button(new Rect(box.x + 14, by, 90, 26), "< Newer")) _page--;
-                if ((_page + 1) * perPage < list.Count && GUI.Button(new Rect(box.x + 110, by, 90, 26), "Older >")) _page++;
-                if (GUI.Button(new Rect(box.x + w - 176, by, 160, 26), $"Save now ({SaveStatesMod.KeySave.Value})")) States.RequestManualSave();
+                _toastText = Box("Toast", new Vector2(0.5f, 1f), new Vector2(0, -96), new Vector2(760, 52), 22, TextAlignmentOptions.Center, out _toastBox);
+                _panelText = Box("Panel", new Vector2(1f, 1f), new Vector2(-24, -150), new Vector2(560, 470), 22, TextAlignmentOptions.TopLeft, out _panelBox);
+                _toastBox.SetActive(false); _panelBox.SetActive(false);
+                return true;
             }
             catch (Exception e)
             {
-                _guiBroken = true;
-                SaveStatesMod.Log.Error("on-screen UI unavailable, hotkeys still work (F9 = load latest): " + e.Message);
+                _broken = true;
+                SaveStatesMod.Log.Error("could not build the on-screen UI (hotkeys still work: F5 save, F9 load latest): " + e);
+                return false;
             }
+        }
+
+        private static TextMeshProUGUI Box(string name, Vector2 anchor, Vector2 pos, Vector2 size, float fontSize, TextAlignmentOptions align, out GameObject box)
+        {
+            box = new GameObject(name);
+            box.transform.SetParent(_root.transform, false);
+            var rt = box.AddComponent<RectTransform>();
+            rt.anchorMin = anchor; rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
+            var bg = box.AddComponent<Image>();
+            bg.color = new Color(0.06f, 0.07f, 0.09f, 0.92f);
+            bg.raycastTarget = false;
+
+            var tgo = new GameObject("Text");
+            tgo.transform.SetParent(box.transform, false);
+            var trt = tgo.AddComponent<RectTransform>();
+            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one; trt.offsetMin = new Vector2(18, 12); trt.offsetMax = new Vector2(-18, -12);
+            var t = tgo.AddComponent<TextMeshProUGUI>();
+            var font = TMP_Settings.defaultFontAsset;
+            if (font == null) { var all = Resources.FindObjectsOfTypeAll<TMP_FontAsset>(); if (all.Length > 0) font = all[0]; }
+            if (font != null) t.font = font;
+            t.fontSize = fontSize; t.color = Color.white; t.alignment = align; t.raycastTarget = false; t.richText = true;
+            return t;
         }
     }
 
@@ -465,11 +533,16 @@ namespace SaveStates
         }
     }
 
-    [HarmonyPatch(typeof(RunSessionService), "CheckBattleFlowStateChangePersistence")]
-    internal static class FlowChangePatch
-    {
-        private static void Postfix(RunSessionService __instance) { States.RunSvc = __instance; }
-    }
+    // Capture the live RunSessionService. (CheckBattleFlowStateChangePersistence is only reached from a compiled-in
+    // callback, so a hook there never fires; Init runs for new and continued runs, the phase methods on every phase.)
+    [HarmonyPatch(typeof(RunSessionService), nameof(RunSessionService.Init))]
+    internal static class RunInitPatch { private static void Postfix(RunSessionService __instance) => States.CaptureRun(__instance, "Init"); }
+    [HarmonyPatch(typeof(RunSessionService), nameof(RunSessionService.StartIntro))]
+    internal static class RunIntroPatch { private static void Postfix(RunSessionService __instance) => States.CaptureRun(__instance, "StartIntro"); }
+    [HarmonyPatch(typeof(RunSessionService), nameof(RunSessionService.SwitchToShop))]
+    internal static class RunShopPatch { private static void Postfix(RunSessionService __instance) => States.CaptureRun(__instance, "SwitchToShop"); }
+    [HarmonyPatch(typeof(RunSessionService), nameof(RunSessionService.StartResolution))]
+    internal static class RunResolutionPatch { private static void Postfix(RunSessionService __instance) => States.CaptureRun(__instance, "StartResolution"); }
 
     [HarmonyPatch(typeof(MainMenuUIController), nameof(MainMenuUIController.OnStart))]
     internal static class MenuStartPatch

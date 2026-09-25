@@ -17,7 +17,7 @@ using Il2CppInterop.Runtime.InteropTypes;
 using MelonLoader;
 using MelonLoader.Utils;
 
-[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(BattleRecorder.BattleRecorderMod), "BattleRecorder", "1.0.1", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace BattleRecorder
@@ -124,20 +124,25 @@ namespace BattleRecorder
                     var e = list[i];
                     var info = new EntityInfo { Guid = G(e.Id), Reserve = reserve };
                     names.TryGetValue(info.Guid, out info.Name);
-                    try
+                    // field by field: some entities (summons, objects) have no character data or no items
+                    var c = e.Character;
+                    if (c != null)
                     {
-                        var c = e.Character;
-                        info.Team = c.Team.ToString();
-                        info.Rank = c.Rank;
-                        info.Entry = EntryId(c.BalancingEntry);
-                        if (c.EquippedItemIds != null)
-                            for (int k = 0; k < c.EquippedItemIds.Count; k++)
-                            {
-                                var it = c.EquippedItemIds[k];
-                                if (it.HasValue) info.Items.Add(it.Value.Guid.ToString());
-                            }
+                        try { info.Team = c.Team.ToString(); } catch { }
+                        try { info.Rank = c.Rank; } catch { }
+                        try { info.Entry = EntryId(c.BalancingEntry); } catch { }
+                        try
+                        {
+                            var items = c.EquippedItemIds;
+                            if (items != null)
+                                for (int k = 0; k < items.Count; k++)
+                                {
+                                    var it = items[k];
+                                    if (it.HasValue) info.Items.Add(it.Value.Guid.ToString());
+                                }
+                        }
+                        catch { }
                     }
-                    catch (Exception ex) { BattleRecorderMod.Log.Warning("character read failed: " + ex.Message); }
                     try
                     {
                         var p = e.Transform.Position;
@@ -208,7 +213,7 @@ namespace BattleRecorder
             string tag = "fight";
             w.WriteStartObject();
             w.WriteString("format", "guildrun-battle-record/1");
-            w.WriteString("mod", "BattleRecorder 1.0.0");
+            w.WriteString("mod", "BattleRecorder 1.0.1");
             w.WriteString("recordedAt", DateTime.Now.ToString("o"));
 
             // ---- run context ----
@@ -260,28 +265,47 @@ namespace BattleRecorder
             int n = entries?.Count ?? 0;
             bool timed = s.Times.Count == n;
             var kinds = new Dictionary<string, int>();
+            var errors = new Dictionary<string, int>();
+            void Err(string where, Exception e) { var key = where + ": " + e.GetType().Name + ": " + e.Message; errors[key] = errors.TryGetValue(key, out var c) ? c + 1 : 1; }
             w.WriteBoolean("timestamps", timed);
             w.WriteStartArray("log");
             for (int i = 0; i < n; i++)
             {
-                var le = entries[i];
-                w.WriteStartObject();
-                if (timed) w.WriteNumber("t", Math.Round(s.Times[i], 3));
-                string k;
-                try { k = WriteEntry(w, le); }
-                catch (Exception e) { k = "error"; w.WriteString("err", e.Message); }
-                w.WriteString("k", k);
-                w.WriteNumber("s", Idx(le.SourceEntityId));
-                w.WriteNumber("g", Idx(le.TargetEntityId));
-                w.WriteEndObject();
+                // Each entry is written to its own buffer, so a field that can't be read costs one entry,
+                // never the whole file (an exception mid-object used to leave the writer inside that object).
+                string k = "error";
+                var ok = Sub(w, null, sw =>
+                {
+                    var le = entries[i];
+                    sw.WriteStartObject();
+                    if (timed) sw.WriteNumber("t", Math.Round(s.Times[i], 3));
+                    k = WriteEntry(sw, le);
+                    sw.WriteString("k", k);
+                    sw.WriteNumber("s", Idx(le.SourceEntityId));
+                    sw.WriteNumber("g", Idx(le.TargetEntityId));
+                    sw.WriteEndObject();
+                }, e => Err("log entry (" + SafeTypeName(entries[i]) + ")", e));
+                if (!ok)
+                {
+                    k = "error";
+                    w.WriteStartObject();
+                    if (timed) w.WriteNumber("t", Math.Round(s.Times[i], 3));
+                    w.WriteString("k", "error"); w.WriteString("type", SafeTypeName(entries[i]));
+                    w.WriteEndObject();
+                }
                 kinds[k] = kinds.TryGetValue(k, out var c) ? c + 1 : 1;
             }
             w.WriteEndArray();
 
             // ---- BattleStats: every per-character / per-relic counter the game keeps ----
-            w.WriteStartObject("stats");
-            try { WriteStats(w, logger.Stats, Idx, s); } catch (Exception e) { w.WriteString("error", e.Message); }
+            if (!Sub(w, "stats", sw => { sw.WriteStartObject(); WriteStats(sw, logger.Stats, Idx, s); sw.WriteEndObject(); }, e => Err("stats", e)))
+            { w.WriteStartObject("stats"); w.WriteEndObject(); }
+
+            // ---- read errors, so gaps are visible in the file and fixable ----
+            w.WriteStartObject("readErrors");
+            foreach (var kv in errors) w.WriteNumber(kv.Key, kv.Value);
             w.WriteEndObject();
+            foreach (var kv in errors) BattleRecorderMod.Log.Warning($"read error x{kv.Value}: {kv.Key}");
 
             // ---- roster last: Idx() may have appended stubs while writing the log ----
             w.WriteStartArray("entities");
@@ -303,6 +327,22 @@ namespace BattleRecorder
 
             BattleRecorderMod.Log.Msg($"fight captured: {n} log entries ({string.Join(", ", kinds.OrderByDescending(kv => kv.Value).Select(kv => kv.Key + " " + kv.Value))}), {s.Roster.Count} entities, timestamps={(timed ? "yes" : $"no ({s.Times.Count} vs {n})")}");
             return tag;
+        }
+
+        // Writes one JSON value via a scratch writer; appends it (under `name` when given) only if body succeeded.
+        private static bool Sub(Utf8JsonWriter w, string name, Action<Utf8JsonWriter> body, Action<Exception> onError)
+        {
+            var ms = new MemoryStream();
+            try { using (var sw = new Utf8JsonWriter(ms)) body(sw); }
+            catch (Exception e) { onError(e); return false; }
+            if (name != null) w.WritePropertyName(name);
+            w.WriteRawValue(ms.ToArray(), skipInputValidation: true);
+            return true;
+        }
+
+        private static string SafeTypeName(LogEntry le)
+        {
+            try { return le.GetIl2CppType().Name; } catch { return "?"; }
         }
 
         private static void Origin(Utf8JsonWriter w, EffectOriginData o)
