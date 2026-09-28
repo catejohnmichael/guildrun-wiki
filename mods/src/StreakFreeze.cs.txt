@@ -1,0 +1,70 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.Application.Progression.Services;
+using MelonLoader;
+
+[assembly: MelonInfo(typeof(StreakFreeze.StreakFreezeMod), "StreakFreeze", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace StreakFreeze
+{
+    // The Red Rift (challenge) win streak lives on the profile as a run history (ProgressionData.ChallengeRunHistory,
+    // or DemoChallengeRunHistory in the demo): a win appends the run's Guid, a loss or abandon appends Guid.Empty, and
+    // the streak is the count of non-empty ids at the end of the list. Only two methods write to it:
+    //   ProgressionService.IncrementChallengeWinstreak(runGuid) - win: append id, recompute, submit to the Steam
+    //                                                              leaderboard, save
+    //   ProgressionService.ResetChallengeWinstreak()            - loss / abandon (DeleteRunData(resetStreak)): append
+    //                                                              Guid.Empty, set 0, save
+    // This mod skips them, so the counter stops where it is: no run can raise it or reset it while the mod is on.
+    // With KeepCountingWins the win path runs normally and only the reset is skipped.
+    public class StreakFreezeMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled, KeepCountingWins;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("StreakFreeze");
+            Enabled = c.CreateEntry("Enabled", true, description: "Freeze the Red Rift win streak: wins and losses no longer change it.");
+            KeepCountingWins = c.CreateEntry("KeepCountingWins", false, description: "Wins still raise the streak (and post to the leaderboard); only losses are ignored.");
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.OnRunStarted))]
+    internal static class OnRunStartedPatch
+    {
+        private static void Postfix(ProgressionService __instance)
+        {
+            if (!StreakFreezeMod.Enabled.Value) return;
+            try
+            {
+                int streak = __instance.Data.GetCurrentChallengeWinstreak().Count;
+                StreakFreezeMod.Log.Msg($"new run: win streak is {streak}, " + (StreakFreezeMod.KeepCountingWins.Value ? "losses will not reset it" : "frozen"));
+            }
+            catch (Exception e) { StreakFreezeMod.Log.Warning("could not read the streak: " + e.Message); }
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.IncrementChallengeWinstreak))]
+    internal static class IncrementPatch
+    {
+        private static bool Prefix(Guid runGuid)
+        {
+            if (!StreakFreezeMod.Enabled.Value || StreakFreezeMod.KeepCountingWins.Value) return true;
+            StreakFreezeMod.Log.Msg($"run {runGuid} won: streak frozen, not counted");
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.ResetChallengeWinstreak))]
+    internal static class ResetPatch
+    {
+        private static bool Prefix()
+        {
+            if (!StreakFreezeMod.Enabled.Value) return true;
+            StreakFreezeMod.Log.Msg("run lost or abandoned: streak kept");
+            return false;
+        }
+    }
+}
