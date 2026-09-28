@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="How Niklas's Red Hot Deals turns items into permanent stats and Shards at ranks C, B, A and S, and when to feed him expensive items.">
+<title>Feeding Niklas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #14161b;
+    --panel: #1d2027;
+    --panel-2: #252932;
+    --line: #333845;
+    --ink: #ece6da;
+    --ink-2: #b4afa4;
+    --ink-3: #858176;
+    --brass: #dcaa4a;      /* Shards */
+    --brass-dim: #7a5f2a;
+    --deal: #c43d45;       /* his red shirt / Burn */
+    --rift: #86e05a;       /* rim-light green: permanent gains */
+    --common: #c9c6bd;
+    --rare: #5aa9f0;
+    --epic: #b58cf5;
+    --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+    --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  .back { max-width: 1080px; margin: 0 auto 16px; font-size: 14px; }
+  .back a { color: var(--ink-2); }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 16px/1.5 var(--body);
+    padding-inline: 16px;
+    padding-block: 24px 56px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 44px; }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: .01em; }
+  p { margin: 0; }
+  .eyebrow {
+    font: 600 12px/1 var(--body); letter-spacing: .16em; text-transform: uppercase; color: var(--brass);
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .shard { display: inline-flex; align-items: center; gap: 3px; color: var(--brass); font-weight: 600; white-space: nowrap; }
+  .shard img { height: 1.05em; width: auto; vertical-align: -2px; }
+  .gain { color: var(--rift); font-weight: 600; }
+  .r-common { color: var(--common); } .r-rare { color: var(--rare); } .r-epic { color: var(--epic); }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: 1fr 250px; gap: 28px; align-items: end;
+    border-bottom: 1px solid var(--line); padding-bottom: 28px;
+  }
+  .hero h1 { font-size: clamp(44px, 8vw, 84px); font-weight: 900; line-height: .9; text-transform: uppercase; }
+  .hero h1 span { color: var(--deal); }
+  .hero .sub { margin-top: 10px; font: 600 15px/1.3 var(--body); color: var(--ink-2); letter-spacing: .04em; }
+  .hero .thesis { margin-top: 18px; font-size: 19px; line-height: 1.45; max-width: 60ch; }
+  .hero .art { align-self: stretch; display: flex; align-items: flex-end; justify-content: center; }
+  .hero .art img { width: 100%; max-width: 250px; height: auto; display: block; filter: drop-shadow(0 12px 24px rgba(0,0,0,.5)); }
+
+  .flow { margin-top: 24px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+  .step {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 14px 13px;
+    display: grid; gap: 6px; align-content: start; position: relative;
+  }
+  .step b { font: 800 20px/1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+  .step p { font-size: 14.5px; color: var(--ink-2); line-height: 1.4; }
+  .step .k { font: 600 11px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .step:not(:last-child)::after {
+    content: ""; position: absolute; right: -8px; top: 50%; width: 6px; height: 6px;
+    border-top: 2px solid var(--ink-3); border-right: 2px solid var(--ink-3); transform: translateY(-50%) rotate(45deg);
+  }
+
+  /* ---------- section heads ---------- */
+  .sec-head { display: grid; gap: 8px; margin-bottom: 18px; }
+  .sec-head h2 { font-size: clamp(28px, 4.2vw, 40px); font-weight: 800; text-transform: uppercase; line-height: 1; }
+  .sec-head p { color: var(--ink-2); max-width: 70ch; }
+
+  /* ---------- rank ladder ---------- */
+  .ladder { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+  .rank {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
+    display: grid; grid-template-rows: auto auto auto auto 1fr; gap: 14px;
+  }
+  .rank.hot { border-color: var(--brass-dim); background: linear-gradient(180deg, #2a2519 0%, var(--panel) 38%); }
+  .rank-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .rank-letter { font: 900 54px/.8 var(--display); }
+  .rank-pct { font: 600 30px/1 var(--mono); }
+  .rank-pct small { display: block; font: 500 11px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); text-align: right; margin-top: 4px; }
+
+  .meter { display: grid; gap: 5px; }
+  .track { position: relative; height: 12px; background: var(--panel-2); border-radius: 3px; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--ink-3); }
+  .fill.over { background: linear-gradient(90deg, var(--ink-3) 0 80%, var(--rift) 80% 100%); }
+  .mark { position: absolute; left: 80%; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .meter-lbl { display: flex; justify-content: space-between; font: 500 11px/1 var(--body); color: var(--ink-3); letter-spacing: .04em; }
+  .meter-lbl span:last-child { padding-right: calc(20% - 16px); }
+
+  .ex { display: grid; gap: 6px; font-size: 14px; }
+  .ex-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .ex-row .it { display: flex; align-items: center; gap: 7px; color: var(--ink-2); min-width: 0; }
+  .ex-row .it img { width: 22px; height: 22px; flex: none; }
+  .ex-row .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+
+  .wad { display: flex; gap: 10px; align-items: center; font-size: 13.5px; color: var(--ink-2); line-height: 1.35; }
+  .wad > img { width: 30px; height: 30px; flex: none; border-radius: 4px; }
+  .wad b { color: var(--ink); font-weight: 600; }
+
+  .verdict { font-size: 14.5px; line-height: 1.45; align-self: end; border-top: 1px solid var(--line); padding-top: 12px; }
+  .verdict b { display: block; font: 800 17px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .rank.hot .verdict b { color: var(--brass); }
+
+  /* ---------- ledger ---------- */
+  .two { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+  .card h3 { font-size: 22px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; }
+  .card .lede { color: var(--ink-2); font-size: 14.5px; margin-bottom: 14px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 380px; }
+  th, td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font: 600 11px/1.2 var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  td:first-child { font-family: var(--body); font-weight: 600; }
+  tr.net td { border-bottom: 0; font-weight: 600; }
+  .col-nik { background: rgba(220,170,74,.08); }
+  thead .col-nik { color: var(--brass); }
+  .foot { margin-top: 12px; font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+
+  /* mini bar charts */
+  .versus { display: grid; gap: 18px; }
+  .vs-block { display: grid; gap: 8px; }
+  .vs-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .vs-title b { font: 800 17px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+  .vs-title span { font-size: 12.5px; color: var(--ink-3); }
+  .bar { display: grid; grid-template-columns: 118px 1fr 64px; align-items: center; gap: 10px; font-size: 13.5px; }
+  .bar .lbl { display: flex; align-items: center; gap: 6px; color: var(--ink-2); white-space: nowrap; }
+  .bar .lbl img { width: 20px; height: 20px; }
+  .bar .t { height: 14px; background: var(--panel-2); border-radius: 3px; position: relative; }
+  .bar .f { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
+  .bar .val { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+  .win { color: var(--rift); }
+
+  /* ---------- rules ---------- */
+  .rules { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+  .rule { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .rule .n { font: 900 34px/.9 var(--display); color: var(--deal); }
+  .rule b { display: block; font: 800 19px/1.15 var(--display); text-transform: uppercase; letter-spacing: .02em; margin-bottom: 5px; }
+  .rule p { font-size: 14.5px; color: var(--ink-2); line-height: 1.45; }
+
+  .fine { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 10px; }
+  .fine h3 { font-size: 18px; font-weight: 800; text-transform: uppercase; color: var(--ink-2); }
+  .fine ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--ink-2); line-height: 1.45; columns: 2; column-gap: 32px; }
+  .fine li { break-inside: avoid; margin-bottom: 6px; }
+  .src { font-size: 12px; color: var(--ink-3); }
+
+  @media (max-width: 880px) {
+    .ladder { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .two { grid-template-columns: 1fr; }
+    .fine ul { columns: 1; }
+  }
+  @media (max-width: 640px) {
+    .hero { grid-template-columns: 1fr 120px; gap: 14px; }
+    .flow { grid-template-columns: 1fr; }
+    .step:not(:last-child)::after { right: 50%; top: auto; bottom: -8px; transform: translateX(50%) rotate(135deg); }
+    .rules { grid-template-columns: 1fr; }
+    .bar { grid-template-columns: 96px 1fr 56px; }
+  }
+  @media (max-width: 480px) {
+    .ladder { grid-template-columns: 1fr; }
+    .hero { grid-template-columns: 1fr; }
+    .hero .art { display: none; }
+  }
+</style>
+
+</head>
+<body>
+<p class="back"><a href="index.html">&larr; Guildrun Wiki</a></p>
+<div class="wrap">
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Guildrun · Niklas, The Dealer · Vanguard</div>
+      <h1>Red Hot <span>Deals</span></h1>
+      <p class="sub">When to feed Niklas your expensive items</p>
+      <p class="thesis">After every fight he survives, Niklas eats the item in his <b>leftmost slot</b>. He refunds <span class="shard"><img src="icons/glyphs/Shard.png" alt="">80%</span> of its price and keeps a share of its stats <span class="gain">forever</span>. The refund never changes. The share he keeps grows with his rank, from half at C to more than the whole item at S.</p>
+
+      <div class="flow">
+        <div class="step">
+          <span class="k">Shop phase</span>
+          <b>Put an item in slot 1</b>
+          <p>He gets an extra item slot. Only the leftmost slot is eaten. Leave it empty and nothing is eaten.</p>
+        </div>
+        <div class="step">
+          <span class="k">Combat</span>
+          <b>He survives the fight</b>
+          <p>The item works at full strength during the fight. If Niklas dies, nothing is eaten.</p>
+        </div>
+        <div class="step">
+          <span class="k">After combat</span>
+          <b>Item is eaten</b>
+          <p><span class="gain">+Rank % of its stats</span> stay on Niklas permanently, plus <span class="shard"><img src="icons/glyphs/Shard.png" alt="">4 / 12 / 20</span> for Common / Rare / Epic.</p>
+        </div>
+      </div>
+    </div>
+    <div class="art"><img src="icons/hero_art/9_Niklas.png" alt="Niklas, a white-bearded man in sunglasses and a red floral shirt, carrying a huge mace"></div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">What one meal is worth</div>
+      <h2>The share he keeps grows with rank</h2>
+      <p>The white line is 100%, the item's full stats. At A, eating an item is the same as wearing it forever with the slot freed up. At S he keeps more than the item gave. Examples use items with Max HP only.</p>
+    </div>
+
+    <div class="ladder">
+      <!-- C -->
+      <article class="rank">
+        <div class="rank-top"><span class="rank-letter">C</span><span class="rank-pct">50%<small>of stats kept</small></span></div>
+        <div class="meter"><div class="track"><div class="fill" style="width:40%"></div><div class="mark"></div></div><div class="meter-lbl"><span>0</span><span>100%</span></div></div>
+        <div class="ex">
+          <div class="ex-row"><span class="it"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="v">+100 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="v">+200 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Vanguard's Glyph</span></span><span class="v">+300 HP</span></div>
+        </div>
+        <div class="wad"><img src="icons/active/9_Wheel_and_Deal.png" alt=""><span><b>Wheel and Deal:</b> not available yet. He starts without an active ability.</span></div>
+        <p class="verdict"><b>Feed cheap</b>An Epic eaten now gives half of what it gives at A. Feed Commons (net cost 1 Shard) or leave slot 1 empty.</p>
+      </article>
+      <!-- B -->
+      <article class="rank">
+        <div class="rank-top"><span class="rank-letter">B</span><span class="rank-pct">75%<small>of stats kept</small></span></div>
+        <div class="meter"><div class="track"><div class="fill" style="width:60%"></div><div class="mark"></div></div><div class="meter-lbl"><span>0</span><span>100%</span></div></div>
+        <div class="ex">
+          <div class="ex-row"><span class="it"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="v">+150 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="v">+300 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Vanguard's Glyph</span></span><span class="v">+450 HP</span></div>
+        </div>
+        <div class="wad"><img src="icons/active/9_Wheel_and_Deal.png" alt=""><span><b>The Dealer spec:</b> every 4th cast creates a <span class="r-common">Common</span> (<span class="shard"><img src="icons/glyphs/Shard.png" alt="">4</span> when eaten).</span></div>
+        <p class="verdict"><b>Commons &amp; Rares</b>Still a discount on the item. Keep Epics he's wearing in slots 2 and up, where they give full stats, until he ranks up.</p>
+      </article>
+      <!-- A -->
+      <article class="rank hot">
+        <div class="rank-top"><span class="rank-letter">A</span><span class="rank-pct">100%<small>of stats kept</small></span></div>
+        <div class="meter"><div class="track"><div class="fill" style="width:80%"></div><div class="mark"></div></div><div class="meter-lbl"><span>0</span><span>100%</span></div></div>
+        <div class="ex">
+          <div class="ex-row"><span class="it"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="v">+200 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="v">+400 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Vanguard's Glyph</span></span><span class="v gain">+600 HP</span></div>
+        </div>
+        <div class="wad"><img src="icons/active/9_Wheel_and_Deal.png" alt=""><span><b>The Dealer spec:</b> every 4th cast creates a <span class="r-rare">Rare</span> (<span class="shard"><img src="icons/glyphs/Shard.png" alt="">12</span> when eaten).</span></div>
+        <p class="verdict"><b>Start feeding Epics</b>An eaten Epic is a full Epic he keeps without using a slot, and you get 20 of the 25 Shards back.</p>
+      </article>
+      <!-- S -->
+      <article class="rank hot">
+        <div class="rank-top"><span class="rank-letter">S</span><span class="rank-pct">125%<small>of stats kept</small></span></div>
+        <div class="meter"><div class="track"><div class="fill over" style="width:100%"></div><div class="mark"></div></div><div class="meter-lbl"><span>0</span><span>100%</span></div></div>
+        <div class="ex">
+          <div class="ex-row"><span class="it"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="v">+250 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="v">+500 HP</span></div>
+          <div class="ex-row"><span class="it"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Vanguard's Glyph</span></span><span class="v gain">+750 HP</span></div>
+        </div>
+        <div class="wad"><img src="icons/active/9_Wheel_and_Deal.png" alt=""><span><b>The Dealer spec:</b> every 4th cast creates an <span class="r-epic">Epic</span> (<span class="shard"><img src="icons/glyphs/Shard.png" alt="">20</span> when eaten).</span></div>
+        <p class="verdict"><b>Always feed the priciest item</b>Every meal beats wearing the item. Buy the Epic, feed it, and repeat every fight.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="card">
+      <h3>The deal vs. the shop</h3>
+      <p class="lede">Niklas refunds more than the shop pays when you sell, at every rank. The stats are extra.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>Per item</th><th class="r-common">Common</th><th class="r-rare">Rare</th><th class="r-epic">Epic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Shop price</td><td>5</td><td>15</td><td>25</td></tr>
+            <tr><td>Sell it (×0.66, rounded down)</td><td>3</td><td>9</td><td>16</td></tr>
+            <tr class="col-nik"><td style="color:var(--brass)">Feed Niklas (80%)</td><td>4</td><td>12</td><td>20</td></tr>
+            <tr class="net"><td>Net cost of one meal</td><td>1</td><td>3</td><td>5</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="foot">The refund is fixed by rarity. It does not depend on his rank or on what you paid, so a 25%-off Epic refunds more than it cost. Never sell an item you could feed him instead.</p>
+    </div>
+
+    <div class="card">
+      <h3>Shards or fights: which runs out first?</h3>
+      <p class="lede">He eats one item per fight, so each meal is limited. Example at rank S, Max HP items:</p>
+      <div class="versus">
+        <div class="vs-block">
+          <div class="vs-title"><b>HP per net Shard</b><span>when Shards are tight</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="t"><span class="f" style="width:100%;background:var(--common)"></span></span><span class="val win">250</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="t"><span class="f" style="width:66.7%;background:var(--rare)"></span></span><span class="val">167</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Glyph</span></span><span class="t"><span class="f" style="width:60%;background:var(--epic)"></span></span><span class="val">150</span></div>
+        </div>
+        <div class="vs-block">
+          <div class="vs-title"><b>HP per meal</b><span>when fights are the limit</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/113_Belt.png" alt=""><span class="r-common">Belt</span></span><span class="t"><span class="f" style="width:33.3%;background:var(--common)"></span></span><span class="val">250</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/621_Spiked_Plate.png" alt=""><span class="r-rare">Spiked Plate</span></span><span class="t"><span class="f" style="width:66.7%;background:var(--rare)"></span></span><span class="val">500</span></div>
+          <div class="bar"><span class="lbl"><img src="icons/item/703_Vanguard_s_Glyph.png" alt=""><span class="r-epic">Glyph</span></span><span class="t"><span class="f" style="width:100%;background:var(--epic)"></span></span><span class="val win">750</span></div>
+        </div>
+      </div>
+      <p class="foot">Early, Shards are scarce and his rank is low, so cheap meals win. Late, you have Shards but only a few fights left, so the most expensive meal wins.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">The playbook</div>
+      <h2>When to feed him expensive items</h2>
+    </div>
+    <div class="rules">
+      <div class="rule"><span class="n">1</span><div><b>Wait for rank A before feeding Epics</b><p>The refund is the same at every rank, but an Epic eaten at C gives half the stats it gives at A. Until he ranks up, feed Commons or leave slot 1 empty.</p></div></div>
+      <div class="rule"><span class="n">2</span><div><b>Keep good items out of slot 1</b><p>Items in any other slot are never eaten and still give full stats. Move the Epic into slot 1 the shop after he reaches A or S.</p></div></div>
+      <div class="rule"><span class="n">3</span><div><b>At S, feed the priciest item every fight</b><p>Every meal is worth 125% of the item for 20% of its price. The only real cost now is the fight it takes.</p></div></div>
+      <div class="rule"><span class="n">4</span><div><b>Feed plain stat items</b><p>Only the item's stats carry over. Item effects, like a Glyph's class bonus, are lost when it is eaten. Epics with only stats, like Scroll of Perseverance, lose nothing.</p></div></div>
+    </div>
+  </section>
+
+  <footer class="fine">
+    <h3>Fine print</h3>
+    <ul>
+      <li>Share kept = 25% + 25% per rank, counting C as 1: C 50%, B 75%, A 100%, S 125%.</li>
+      <li>Rank is read when the item is eaten, not when it was bought. Each stat is multiplied and rounded down, so a Defense +45 item at B gives +33.</li>
+      <li>Refunds: Common <span class="shard">4</span>, Rare <span class="shard">12</span>, Epic <span class="shard">20</span>. Any other rarity, including Unique items, refunds <span class="shard">4</span>.</li>
+      <li>Wheel and Deal needs <b>The Dealer</b> spec. Its cast counter carries over between fights. Specs unlock at rank B, so there is no item at rank C.</li>
+      <li>His Rush Burn is <span class="num">1 + Max HP/500</span> per equipped item. Eating leaves a slot empty until you refill it, but the Max HP he keeps raises the Burn.</li>
+      <li><b>The Hoarder</b> spec deals damage per Shard generated this game, and his refunds count as generated Shards. <b>The Executive</b> adds a slot and Shields per equipped item.</li>
+    </ul>
+    <p class="src">Read from the compiled game code (NiklasConsumeItemAtFirstSlotAction, NiklasAction, ShopData.GetItemSellPrice), Guildrun Demo build 25461680. Item stats from the item sheet.</p>
+  </footer>
+
+</div>
+
+</body>
+</html>
