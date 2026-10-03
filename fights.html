@@ -131,6 +131,7 @@ img.si{height:1.18em;width:auto;vertical-align:-0.24em;margin-right:2px}
 .ecard h3{margin:2px 0;font-size:15px}
 .ecard .teaser{color:#9aa;font-size:12px;margin-top:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .ecard .edetail{display:none}
+.ecard .teaser:has(div){display:block;overflow:visible}
 .ecard .chev{float:right;color:#778;font-size:12px}
 /* pop-out modal */
 #modalbg{position:fixed;inset:0;background:rgba(6,8,12,.72);display:none;z-index:60;padding:28px 16px;overflow:auto}
@@ -184,6 +185,81 @@ details.rawfx>summary:hover{color:#9fb0d0}
 details.rawfx[open]>summary{color:#9fb0d0;margin-bottom:3px}
 .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .chgent{margin:12px 0 2px}.chg{margin:2px 0 8px 14px;padding:0;font-size:13px}.chg li{margin:1px 0}
+/* difficulty-tier toggle: values that differ by tier render once per tier, only the picked one shows */
+html:not([data-tier]) .tv:not(.t1),html[data-tier="1"] .tv:not(.t1),html[data-tier="2"] .tv:not(.t2),html[data-tier="3"] .tv:not(.t3){display:none}
+.tiersel{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;margin-top:5px}
+.tiersel button{background:#20242e;color:#cdd;border:1px solid #333a47;border-radius:20px;padding:3px 11px;cursor:pointer;font:inherit;font-size:12px}
+.tiersel button:hover{border-color:#6a7bd0}.tiersel button.on{background:#7a5a16;border-color:#d9b038;color:#fff}
+/* fights by floor: encounter cards */
+.flhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:26px 0 2px;border-bottom:1px solid #444;padding-bottom:3px}
+.flhead h2{margin:0;border:0;padding:0}.flhead .fltag{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#9fb0c3}
+.flhead .fltag.boss{color:#e6b34d}.flrule{font-size:13px;color:#bcc6d4;margin:6px 0 4px}
+.encgrid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.encart{display:flex;gap:2px;height:118px;background:linear-gradient(160deg,#20242e,#14161b);border-radius:6px;margin-bottom:8px;overflow:hidden;align-items:flex-end;justify-content:center}
+.encart img{flex:1 1 0;min-width:0;height:100%;object-fit:contain}
+.encart .encnone{align-self:center;color:#667;font-size:12px}
+.edetail .encart{height:190px}
+.encp{float:right;font-size:13px;font-weight:700;color:#e6c86a;background:#2a2410;border:1px solid #6b5a1e;border-radius:10px;padding:0 7px;margin-left:6px}
+.ecard .comp{color:#cdd;font-size:12.5px;margin-top:3px}
+.ecard .teaser b{color:#dde}
+.fchips a.chip{padding:2px 8px}
+/* stat pills + enemy unit cards (fight panels, trials) */
+.pill{display:inline-flex;align-items:center;gap:4px;background:#14171d;border:1px solid #2c313c;border-radius:12px;padding:1px 8px 1px 5px;font-size:12px;white-space:nowrap;cursor:default}
+.pill b{color:#eef;font-weight:600}.pill img.si{height:15px;margin:0}
+.units{display:flex;flex-direction:column;gap:8px;margin:6px 0}
+.unit{display:flex;gap:11px;align-items:center;background:linear-gradient(165deg,#1d212a,#14171d);border:1px solid #2c313c;border-radius:10px;padding:7px 10px 7px 7px}
+.uart{position:relative;flex:none;width:76px;height:76px;border-radius:9px;background:radial-gradient(circle at 50% 35%,#2a3341,#11141a);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.uart img{width:100%;height:100%;object-fit:contain}
+.ucount{position:absolute;right:3px;bottom:3px;background:#d9b038;color:#1a1405;font-weight:800;font-size:12px;border-radius:8px;padding:0 6px;line-height:17px}
+.ubody{min-width:0;flex:1}.uname{font-weight:700;font-size:14.5px;margin-bottom:4px}
+.upills{display:flex;flex-wrap:wrap;gap:4px}.umoves{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
+.umoves a{font-size:11.5px;background:#232838;border:1px solid #39405a;border-radius:5px;padding:1px 7px;color:#c9d4ff}
+.umoves .mk{font-size:9.5px;color:#8b93a4;text-transform:uppercase;letter-spacing:.4px;margin-right:4px}
+/* toughness bar on fight cards (single measure: total enemy HP, scaled to the toughest fight on the same floor) */
+.hprow{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:#9aa}
+.hprow img.si{height:15px;margin:0}.hprow b{color:#eef;font-weight:600;min-width:48px;text-align:right}
+.tbar{flex:1;height:7px;background:#262b35;border-radius:4px;overflow:hidden}
+.tbar i{display:block;height:100%;background:#8fbf6a;border-radius:0 4px 4px 0}
+.cmeta{display:flex;gap:12px;align-items:center;margin-top:5px;font-size:12px;color:#9aa}.cmeta img.si{height:14px}
+/* run map timeline */
+.rmact{margin:22px 0 8px;display:flex;align-items:center;gap:10px;color:#e6c86a;font-weight:800;letter-spacing:2px;font-size:13px}
+.rmact::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,#6b5a1e,transparent)}
+.rmrow{display:grid;grid-template-columns:64px minmax(0,1.35fr) minmax(0,1fr) minmax(0,.8fr);gap:12px;align-items:start;background:#1a1d24;border:1px solid #2c313c;border-radius:12px;padding:10px 12px;margin:0 0 8px;scroll-margin-top:120px}
+.rmnum{width:56px;height:56px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 40% 30%,#2e3646,#151920);border:2px solid #3a4459;line-height:1}
+.rmnum b{font-size:22px;color:#eef}.rmnum small{font-size:9px;color:#8b93a4;text-transform:uppercase;margin-top:2px}
+.rmnum.boss{border-color:#d9b038;box-shadow:0 0 12px rgba(217,176,56,.35)}.rmnum.boss small{color:#e6c86a}
+.rmlbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#8b93a4;margin-bottom:5px;display:flex;gap:6px;align-items:center}
+.rmlbl b{color:#e6c86a}
+.rmcol{font-size:12.5px;line-height:1.55;min-width:0}
+.fthumbs{display:flex;flex-wrap:wrap;gap:6px}
+.fthumb{display:flex;flex-direction:column;align-items:center;width:66px;text-decoration:none;color:#cdd}
+.fthumb:hover{text-decoration:none}.fthumb:hover .fti{border-color:#6a7bd0}
+.fti{position:relative;width:58px;height:58px;border-radius:10px;background:radial-gradient(circle at 50% 35%,#2a3341,#11141a);border:1px solid #333a47;overflow:hidden}
+.fti img{width:100%;height:100%;object-fit:contain}
+.fti .ftp{position:absolute;left:0;right:0;bottom:0;background:rgba(10,12,16,.82);color:#e6c86a;font-size:10.5px;font-weight:700;text-align:center;line-height:15px}
+.ftn{font-size:10.5px;text-align:center;line-height:1.15;margin-top:3px;overflow-wrap:anywhere}
+.evc{display:inline-block;background:#20242e;border:1px solid #333a47;border-radius:12px;padding:0 8px;margin:2px 3px 2px 0;white-space:nowrap}
+.evc small{color:#8b93a4;margin-left:3px}
+@media(max-width:820px){.rmrow{grid-template-columns:56px minmax(0,1fr)}.rmrow .rmcol{grid-column:2}}
+/* floor strip: which of the 12 floors something shows up on */
+.fstrip{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:7px}
+.fstrip i{height:8px;border-radius:2px;background:#262b35}.fstrip i.on{background:#7fb3ff}.fstrip i.on.boss{background:#e6b34d}
+.fstrip i:nth-child(6){margin-right:3px}
+.fstripbig{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin:6px 0 10px}
+.fstripbig a,.fstripbig span{display:block;text-align:center;font-size:11px;font-weight:700;padding:5px 0;border-radius:5px;background:#20242e;color:#556;border:1px solid #2a2f38}
+.fstripbig a{background:#22355a;color:#dfe9ff;border-color:#3d5a95}.fstripbig a.boss{background:#4a3a12;border-color:#d9b038;color:#ffe9a8}
+.fstripbig a:hover{text-decoration:none;border-color:#9fbaff}
+.wfl{display:flex;gap:8px;align-items:baseline;margin:3px 0;font-size:12.5px}.wfl .wfn{flex:none;width:52px;color:#9fb0c3;font-weight:600}
+/* mini bar charts (enemy stats by floor): one measure per chart, own scale */
+.sbcharts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0}
+@media(max-width:480px){.sbcharts{grid-template-columns:1fr}}
+.sbchart h5{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#9fb0d0;display:flex;align-items:center;gap:4px}
+.sbchart h5 img.si{height:14px}
+.sbr{display:grid;grid-template-columns:24px 1fr auto;gap:6px;align-items:center;font-size:11.5px;margin:2px 0}
+.sbr .sbl{color:#8b93a4;text-align:right}.sbr .sbv{color:#dde;white-space:nowrap}
+.sbt{height:9px;background:#22262f;border-radius:0 4px 4px 0}
+.sbt i{display:block;height:100%;border-radius:0 4px 4px 0}
+.sbchart.hp .sbt i{background:#8fbf6a}.sbchart.hit .sbt i{background:#d9a35a}
 @media (max-width:640px){
   main{padding:10px 12px}
   h1{font-size:22px}h2{margin-top:20px}
@@ -242,6 +318,13 @@ function initF(){
   applyF();
 }
 window.addEventListener('load',initF);
+// ---- difficulty-tier toggle (Fights by floor, Enemies): shows the .tv.tN values for the picked tier; remembered per browser ----
+function setTier(t){document.documentElement.setAttribute('data-tier',t);
+  document.querySelectorAll('.tiersel button').forEach(function(b){b.classList.toggle('on',b.dataset.tier===String(t));});
+  try{localStorage.setItem('gr_tier',t);}catch(e){}}
+(function(){var t='1';try{t=localStorage.getItem('gr_tier')||'1';}catch(e){}document.documentElement.setAttribute('data-tier',t);
+  window.addEventListener('load',function(){if(document.querySelector('.tiersel'))setTier(t);});})();
+document.addEventListener('click',function(e){var b=e.target.closest('.tiersel button');if(b)setTier(b.dataset.tier);});
 function filt(){applyF();}   // back-compat: old inline oninline handlers still work
 // ---- wiki-wide search (nav, top-right) — searches GINDEX across every page ----
 function gsInit(){
@@ -359,7 +442,7 @@ document.addEventListener('click',function(e){
   TIP.style.left=Math.max(4,x)+'px';TIP.style.top=Math.max(4,y)+'px';
 });
 </script></head>
-<body><nav><a href="index.html">Home</a> <a href="heroes.html">Heroes & Classes</a> <a href="abilities.html">Abilities</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="runmap.html">Run map</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="stages.html">Acts & Stages</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="mechanics.html">Mechanics</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a> <a href="mods.html">Mods</a> <a href="fights.html" style=color:#fff>Fight viewer</a><div class="gsearch"><input id="gs" type="search" placeholder="Search the whole wiki…" autocomplete="off" spellcheck="false" aria-label="Search the wiki"><div id="gsr" class="gsr"></div></div><span class="b">build 25461680</span></nav><main><h1>Fight viewer</h1><style>
+<body><nav><a href="index.html">Home</a> <a href="heroes.html">Heroes & Classes</a> <a href="abilities.html">Abilities</a> <a href="items.html">Items</a> <a href="relics.html">Relics</a> <a href="rankmods.html">Rank Upgrades</a> <a href="runmap.html">Run map</a> <a href="events.html">Events</a> <a href="events_rewards.html">Reward blocks</a> <a href="stages.html">Fights by floor</a> <a href="enemies.html">Enemies</a> <a href="shop.html">Shop & Odds</a> <a href="mechanics.html">Mechanics</a> <a href="corrections.html">Corrections</a> <a href="changes.html">Patch changes</a> <a href="mods.html">Mods</a> <a href="fights.html" style=color:#fff>Fight viewer</a><div class="gsearch"><input id="gs" type="search" placeholder="Search the whole wiki…" autocomplete="off" spellcheck="false" aria-label="Search the wiki"><div id="gsr" class="gsr"></div></div><span class="b">build 25461680</span></nav><main><h1>Fight viewer</h1><style>
 .fv{--c-auto:#3987e5;--c-ability:#d95926;--c-item:#199e70;--c-relic:#c98500;--c-status:#d55181;--c-other:#9085e9;--gap:#1c1f26}
 .fv .drop{border:2px dashed #3a4150;border-radius:10px;padding:18px;text-align:center;color:#9fb0c3;margin:10px 0}
 .fv .drop.over{border-color:#6a7bd0;background:#1b2030}
