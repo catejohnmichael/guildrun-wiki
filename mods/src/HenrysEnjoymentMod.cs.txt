@@ -1,0 +1,63 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.Application.Progression.Services;
+using MelonLoader;
+
+[assembly: MelonInfo(typeof(HenrysEnjoymentMod.HenrysEnjoymentModMod), "Henry's Enjoyment Mod", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace HenrysEnjoymentMod
+{
+    // The Red Rift win streak is 7. It was always 7. It will always be 7.
+    //
+    // How: the displayed streak (ProgressionData.CurrentChallengeWinstreak) is set from
+    // ProgressionService.CalculateCurrentStreak(history) when the profile loads and after each win. That returns 7 now.
+    // Wins (IncrementChallengeWinstreak) and losses (ResetChallengeWinstreak) are skipped, so nothing can move it off 7
+    // and nothing is posted to the Steam leaderboard. The saved run history is untouched: delete the DLL and your real
+    // streak comes back, for better or worse.
+    public class HenrysEnjoymentModMod : MelonMod
+    {
+        internal const int TheStreak = 7;
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("HenrysEnjoymentMod");
+            Enabled = c.CreateEntry("Enabled", true, description: "Win streak is 7. Always.");
+            Log.Msg("streak locked at 7. Enjoy.");
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), "CalculateCurrentStreak")]
+    internal static class CalculatePatch
+    {
+        private static void Postfix(ref int __result)
+        {
+            if (HenrysEnjoymentModMod.Enabled.Value) __result = HenrysEnjoymentModMod.TheStreak;
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.IncrementChallengeWinstreak))]
+    internal static class IncrementPatch
+    {
+        private static bool Prefix()
+        {
+            if (!HenrysEnjoymentModMod.Enabled.Value) return true;
+            HenrysEnjoymentModMod.Log.Msg("you won! streak: 7");
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgressionService), nameof(ProgressionService.ResetChallengeWinstreak))]
+    internal static class ResetPatch
+    {
+        private static bool Prefix()
+        {
+            if (!HenrysEnjoymentModMod.Enabled.Value) return true;
+            HenrysEnjoymentModMod.Log.Msg("you lost! streak: 7");
+            return false;
+        }
+    }
+}
