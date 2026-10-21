@@ -1,0 +1,79 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.GameRun.GameRegistry.Services;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.InteropTypes;
+using MelonLoader;
+
+[assembly: MelonInfo(typeof(QualityOnly.QualityOnlyMod), "QualityOnly", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace QualityOnly
+{
+    // Every starting bonus offered under the starting heroes becomes Quality over Quantity (Relic_6016), on the first
+    // roll and on every reroll. GameRegistryService.SetupInitialSelection rolls the heroes and the bonus relics, then
+    // tail-calls SetPendingChoices(heroRefs, relicRefs); Init calls it for a new run and ReRollInitialSelection for
+    // each reroll. The tutorial's scripted pick also calls SetPendingChoices (with no relics) - it is left alone by
+    // only rewriting while SetupInitialSelection is running. In co-op the host rolls the offers, so the host needs it.
+    public class QualityOnlyMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled;
+        internal static MelonPreferences_Entry<string> Bonus;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("QualityOnly");
+            Enabled = c.CreateEntry("Enabled", true, description: "Make every starting bonus the one below.");
+            Bonus = c.CreateEntry("Bonus", "Relic_6016", description: "Relic id every starting bonus becomes. Relic_6016 = Quality over Quantity.");
+        }
+    }
+
+    [HarmonyPatch(typeof(GameRegistryService), "SetupInitialSelection")]
+    internal static class SetupInitialSelectionPatch
+    {
+        [ThreadStatic] internal static bool Active;
+        private static void Prefix() => Active = true;
+        private static void Finalizer() => Active = false;
+    }
+
+    [HarmonyPatch(typeof(GameRegistryService), "SetPendingChoices")]
+    internal static class SetPendingChoicesPatch
+    {
+        // BalancingRef<IRelicEntry> is just a BalancingEntryId (0x30 bytes): _serializedGuid @0x0, _sequentialId @0x8,
+        // _prefix @0x10, _mode @0x18 (1 = sequential), Guid @0x1C. Sequential ids compare by prefix + number only
+        // (BalancingEntryId.Equals), so a "Relic" entry becomes another relic by changing the number - no object
+        // pointers are written. Il2Cpp array elements start at +0x20. Read raw because Il2CppInterop's view of
+        // non-blittable generic structs is unreliable (see BattleRecorder's Raw class).
+        private const int ArrayData = 0x20, Stride = 0x30, SeqOff = 0x8, PrefixOff = 0x10, ModeOff = 0x18;
+
+        private static unsafe void Prefix(object relicRefs)
+        {
+            if (!SetupInitialSelectionPatch.Active || !QualityOnlyMod.Enabled.Value) return;
+            try
+            {
+                if (relicRefs is not Il2CppObjectBase arr || arr.Pointer == IntPtr.Zero) return;
+                string want = QualityOnlyMod.Bonus.Value.Trim();
+                int us = want.LastIndexOf('_');
+                if (us <= 0 || !int.TryParse(want.Substring(us + 1), out int seq))
+                { QualityOnlyMod.Log.Error($"Bonus '{want}' is not a relic id like Relic_6016"); return; }
+                string prefix = want.Substring(0, us);
+
+                byte* p = (byte*)arr.Pointer;
+                int n = (int)*(long*)(p + 0x18);                 // Il2CppArray.max_length
+                var before = new string[n];
+                for (int i = 0; i < n; i++)
+                {
+                    byte* e = p + ArrayData + i * Stride;
+                    string pre = IL2CPP.Il2CppStringToManaged(*(IntPtr*)(e + PrefixOff));
+                    before[i] = $"{pre}_{*(int*)(e + SeqOff)}";
+                    if (*(int*)(e + ModeOff) == 1 && pre == prefix) *(int*)(e + SeqOff) = seq;
+                }
+                QualityOnlyMod.Log.Msg(n == 0 ? "starting offer has no bonuses; nothing to change"
+                    : $"starting bonuses [{string.Join(", ", before)}] -> all {want}");
+            }
+            catch (Exception ex) { QualityOnlyMod.Log.Error("rewrite failed: " + ex); }
+        }
+    }
+}
