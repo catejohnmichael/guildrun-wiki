@@ -1,11 +1,12 @@
 using System;
+using System.Linq;
 using HarmonyLib;
 using Il2CppEmber.Scopes.GameRun.GameRegistry.Services;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(QualityOnly.QualityOnlyMod), "QualityOnly", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(QualityOnly.QualityOnlyMod), "QualityOnly", "1.0.1", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace QualityOnly
@@ -15,11 +16,17 @@ namespace QualityOnly
     // tail-calls SetPendingChoices(heroRefs, relicRefs); Init calls it for a new run and ReRollInitialSelection for
     // each reroll. The tutorial's scripted pick also calls SetPendingChoices (with no relics) - it is left alone by
     // only rewriting while SetupInitialSelection is running. In co-op the host rolls the offers, so the host needs it.
+    // QuantityOnly is the same mod for Quantity over Quality; the two are mutually exclusive, so if both are installed
+    // and enabled neither changes anything and both log why.
     public class QualityOnlyMod : MelonMod
     {
+        internal const string Rival = "QuantityOnly";
         internal static MelonLogger.Instance Log;
         internal static MelonPreferences_Entry<bool> Enabled;
         internal static MelonPreferences_Entry<string> Bonus;
+
+        internal static bool RivalActive() =>
+            RegisteredMelons.Any(m => m.Info.Name == Rival) && MelonPreferences.GetEntry<bool>(Rival, "Enabled")?.Value == true;
 
         public override void OnInitializeMelon()
         {
@@ -51,6 +58,8 @@ namespace QualityOnly
         private static unsafe void Prefix(object relicRefs)
         {
             if (!SetupInitialSelectionPatch.Active || !QualityOnlyMod.Enabled.Value) return;
+            if (QualityOnlyMod.RivalActive())
+            { QualityOnlyMod.Log.Error($"{QualityOnlyMod.Rival} is also enabled; the two are mutually exclusive, so starting bonuses are left as rolled. Disable one."); return; }
             try
             {
                 if (relicRefs is not Il2CppObjectBase arr || arr.Pointer == IntPtr.Zero) return;
