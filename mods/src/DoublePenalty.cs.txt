@@ -1,0 +1,91 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Balancing.SimulationBridge.Effects.Actions;
+using MelonLoader;
+using UnityEngine.Localization.Settings;
+using UnityEngine.Localization.Tables;
+
+[assembly: MelonInfo(typeof(DoublePenalty.DoublePenaltyMod), "DoublePenalty", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace DoublePenalty
+{
+    // Quality over Quantity (Relic_6016) keeps its -1 max team size (3 heroes -> 2) but, instead of +2 item slots,
+    // gets Quantity over Quality's -1 item slot: both downsides, no upside. Relic_6016's OnAcquire effect is two
+    // actions, IncrementTeamSizeAction(-1) and ModifyGlobalHeroItemSlotDelta(+2); ApplyAction passes Amount straight to
+    // IBattleContextWriter.ModifyGlobalHeroItemSlotDelta, which records it per EffectId. +2 is unique to Relic_6016 (the
+    // other users are Relic_6012 -1, Relic_771 +1, Relic_4038 +1 - re-check code_effects.json after each patch), so the
+    // action is recognised by its Amount and swapped for the duration of that one call. The recorded delta is the new
+    // value, so an existing run keeps it on reload. Pair with QualityOnly to be offered it every run.
+    public class DoublePenaltyMod : MelonMod
+    {
+        internal const int QualityItemSlots = 2;
+        internal const string TableName = "Relics", NameKey = "Relics.Relic_6016.Name", DescriptionKey = "Relics.Relic_6016.Description";
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled, RewriteTooltip;
+        internal static MelonPreferences_Entry<int> ItemSlotDelta;
+        internal static MelonPreferences_Entry<string> Name;
+        private int _frame;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("DoublePenalty");
+            Enabled = c.CreateEntry("Enabled", true, description: "Quality over Quantity loses item slots instead of gaining them.");
+            ItemSlotDelta = c.CreateEntry("ItemSlotDelta", -1, description: "Item slots Quality over Quantity gives (game default +2).");
+            RewriteTooltip = c.CreateEntry("RewriteTooltip", true, description: "Rewrite the relic's name and description to match.");
+            Name = c.CreateEntry("Name", "Hard Mode", description: "Name shown for the relic (empty = keep Quality over Quantity).");
+        }
+
+        internal static string Description()
+        {
+            int d = ItemSlotDelta.Value;
+            string items = d < 0 ? $"Heroes have {-d} fewer item slot{(d == -1 ? "" : "s")}."
+                : d > 0 ? $"Heroes can equip {d} additional item{(d == 1 ? "" : "s")}." : "Item slots are unchanged.";
+            return "Max team size is decreased by {1}.\n\n" + items;
+        }
+
+        // The string table loads asynchronously and is reloaded on a language change, so check every couple of seconds
+        // and (re)write the entry whenever it doesn't say what the relic now does. Text is English in every language.
+        public override void OnUpdate()
+        {
+            if (!Enabled.Value || !RewriteTooltip.Value || ++_frame % 120 != 0) return;
+            try
+            {
+                if (!LocalizationSettings.InitializationOperation.IsDone) return;
+                var op = LocalizationSettings.StringDatabase.GetTableAsync(TableName);
+                if (!op.IsDone || op.Result == null) return;
+                bool changed = Rewrite(op.Result, DescriptionKey, Description());
+                if (!string.IsNullOrWhiteSpace(Name.Value)) changed |= Rewrite(op.Result, NameKey, Name.Value.Trim());
+                if (changed) Log.Msg($"Quality over Quantity tooltip rewritten ({LocalizationSettings.SelectedLocale?.Identifier.Code})");
+            }
+            catch (Exception ex) { Log.Error("tooltip rewrite failed: " + ex.Message); RewriteTooltip.Value = false; }
+        }
+
+        private static bool Rewrite(StringTable table, string key, string want)
+        {
+            StringTableEntry entry = table.GetEntry(key);
+            if (entry == null || entry.Value == want) return false;
+            entry.Value = want;
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(ModifyGlobalHeroItemSlotDelta), nameof(ModifyGlobalHeroItemSlotDelta.ApplyAction))]
+    internal static class ApplyActionPatch
+    {
+        private static void Prefix(ModifyGlobalHeroItemSlotDelta __instance, ref int? __state)
+        {
+            if (!DoublePenaltyMod.Enabled.Value || __instance.Amount != DoublePenaltyMod.QualityItemSlots) return;
+            __state = __instance.Amount;
+            __instance.Amount = DoublePenaltyMod.ItemSlotDelta.Value;
+            DoublePenaltyMod.Log.Msg($"Quality over Quantity: item slots {__state:+0;-0} -> {__instance.Amount:+0;-0;0}");
+        }
+
+        private static Exception Finalizer(ModifyGlobalHeroItemSlotDelta __instance, int? __state, Exception __exception)
+        {
+            if (__state.HasValue) __instance.Amount = __state.Value;
+            return __exception;
+        }
+    }
+}
