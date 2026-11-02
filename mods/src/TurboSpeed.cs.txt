@@ -1,0 +1,59 @@
+using System;
+using System.Linq;
+using HarmonyLib;
+using Il2CppEmber.Scopes.GameRun.Timing;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using MelonLoader;
+
+[assembly: MelonInfo(typeof(TurboSpeed.TurboSpeedMod), "TurboSpeed", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace TurboSpeed
+{
+    // The three fight-speed buttons drop the slowest speed and gain one Multiplier x the game's fastest:
+    // [slow, medium, fast] -> [medium, fast, fast x 2]. BattleTimescaleService keeps the speeds in _availableTimeScales
+    // (3 floats, filled by its constructor) and ApplyTimescaleIndex is the only place they're read: it copies
+    // _availableTimeScales[index] to BaseTimescale and, while a fight is running (_isEffectActive), to Time.timeScale.
+    // Its three callers (SetBaseTimescale from the buttons, EvaluateAutoRamp, Init restoring the saved index) all call
+    // it directly, so a prefix there swaps the array before any speed is used. The fight itself runs on fixed ticks;
+    // timeScale only changes how many ticks pass per real second, so fights play out the same at any speed. Auto mode
+    // ramps to the last entry after 20 s, which is now the new speed. The saved index stays 0-2, so removing the mod
+    // just maps it back onto the game's own speeds.
+    public class TurboSpeedMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled;
+        internal static MelonPreferences_Entry<float> Multiplier;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("TurboSpeed");
+            Enabled = c.CreateEntry("Enabled", true, description: "Replace the slowest fight speed with a faster one.");
+            Multiplier = c.CreateEntry("Multiplier", 2f, description: "New top speed as a multiple of the game's fastest.");
+        }
+    }
+
+    [HarmonyPatch(typeof(BattleTimescaleService), "ApplyTimescaleIndex")]
+    internal static class ApplyTimescaleIndexPatch
+    {
+        private static Il2CppStructArray<float> _ours;   // the array we installed; also keeps it referenced
+
+        private static void Prefix(BattleTimescaleService __instance)
+        {
+            if (!TurboSpeedMod.Enabled.Value) return;
+            try
+            {
+                var speeds = __instance._availableTimeScales;
+                if (speeds == null || speeds.Length < 2 || (_ours != null && speeds.Pointer == _ours.Pointer)) return;
+                float mult = Math.Clamp(TurboSpeedMod.Multiplier.Value, 1f, 10f);
+                var old = speeds.ToArray();
+                var now = old.Skip(1).Append(old[^1] * mult).ToArray();
+                _ours = new Il2CppStructArray<float>(now);
+                __instance._availableTimeScales = _ours;
+                TurboSpeedMod.Log.Msg($"fight speeds [{string.Join(", ", old)}] -> [{string.Join(", ", now)}]");
+            }
+            catch (Exception ex) { TurboSpeedMod.Log.Error("speed swap failed: " + ex); }
+        }
+    }
+}
