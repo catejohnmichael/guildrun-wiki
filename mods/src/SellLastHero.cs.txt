@@ -5,12 +5,13 @@ using Il2CppEmber.Scopes.GameRun.GameRegistry.Data.Characters;
 using Il2CppEmber.Scopes.GameRun.InputHandling;
 using Il2CppEmber.Scopes.GameRun.RunSession.Data;
 using Il2CppEmber.Scopes.GameRun.Shop.Data;
+using Il2CppEmber.Scopes.GameRun.Shop.Services;
 using Il2CppInterop.Runtime;
 using MelonLoader;
 using BattleHeroDrag = Il2CppEmber.Scopes.Battle.InputHandling.BattleHeroDragSubController;
 using ShopHeroDrag = Il2CppEmber.Scopes.GameRun.InputHandling.HeroDragSubController;
 
-[assembly: MelonInfo(typeof(SellLastHero.SellLastHeroMod), "SellLastHero", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonInfo(typeof(SellLastHero.SellLastHeroMod), "SellLastHero", "1.0.1", "Claude (for John Cate)")]
 [assembly: MelonGame("Leyline", "Guildrun")]
 
 namespace SellLastHero
@@ -45,26 +46,30 @@ namespace SellLastHero
         }
 
         // Decide whether this sale of the only hero may go through. Called once per drop.
+        // Everything is read through ShopService, the object whose SellHero does the sale, because its readers are
+        // the ones the game itself uses in the shop. (1.0.0 went through ShopReader / GameRegistryDataReader private
+        // fields, one of which is null in the shop, so every check threw and the sale stayed blocked.)
         internal static bool Allow(SellContext ctx)
         {
             if (!Enabled.Value) return false;
             try
             {
-                var shop = ctx.ShopReader;
-                if (shop == null) { Log.Warning("no ShopReader; leaving the sale blocked"); return false; }
-
-                var flow = shop._runSessionReader.BattleFlowState.CurrentValue;
+                var svc = Need(ctx.Shop, "ShopService");
+                var flow = Need(Need(svc._runSessionReader, "ShopService._runSessionReader").BattleFlowState, "BattleFlowState").CurrentValue;
                 if (ShopOnly.Value && flow != BattleFlowState.Shop)
                 { Log.Msg($"last hero not sold: phase is {flow}, not Shop (ShopOnly=true)"); return false; }
 
                 if (!RequireAffordableHero.Value) { Log.Msg("selling last hero"); return true; }
 
-                var registry = ctx.Registry;
-                int gold = registry._playerReader.CurrentShards.CurrentValue;
-                var hero = registry.GetHeroData(ctx.State.DraggedHeroId)?.TryCast<HeroData>();
-                if (hero == null) { Log.Warning("could not read the hero being sold; leaving the sale blocked"); return false; }
-                int sell = shop.GetHeroSellPrice(hero.Rank);
-                int? cheapest = Raw.CheapestHeroOffer(shop);
+                int gold = Need(Need(svc._playerReader, "ShopService._playerReader").CurrentShards, "CurrentShards").CurrentValue;
+                var registry = Need(svc._gameRegistryReader, "ShopService._gameRegistryReader");
+                var state = Need(ctx.State, "drag state");
+                var hero = Need(Need(registry.GetHeroData(state.DraggedHeroId), "hero data").TryCast<HeroData>(), "HeroData");
+                IntPtr shopData = Raw.ServiceData(svc);
+                if (shopData == IntPtr.Zero) throw new NullReferenceException("ShopService data (ShopData) is null");
+                int chunk = svc._runSessionReader.CurrentChunkIndex;
+                int sell = new ShopData(shopData).GetHeroSellPrice(hero.Rank, chunk);
+                int? cheapest = Raw.CheapestHeroOffer(shopData);
                 if (cheapest == null)
                 { Log.Msg($"last hero not sold: no hero on offer to buy (gold {gold}, sells for {sell})"); return false; }
                 if (gold + sell < cheapest.Value)
@@ -73,15 +78,17 @@ namespace SellLastHero
                 Log.Msg($"selling last hero (rank {hero.Rank}) for {sell}; gold {gold} -> {gold + sell}, cheapest hero {cheapest}");
                 return true;
             }
-            catch (Exception ex) { Log.Error("check failed; leaving the sale blocked: " + ex); return false; }
+            catch (Exception ex) { Log.Error("check failed; leaving the sale blocked: " + ex.Message + Environment.NewLine + ex); return false; }
         }
+
+        private static T Need<T>(T value, string what) where T : class =>
+            value ?? throw new NullReferenceException(what + " is null");
     }
 
     internal sealed class SellContext
     {
         [ThreadStatic] internal static SellContext Current;
-        internal GameRegistryDataReader Registry;
-        internal ShopReader ShopReader;
+        internal ShopService Shop;
         internal HeroDragState State;
         internal bool? Decision;       // OwnedHeroCount may be read more than once per drop; decide once.
     }
@@ -90,7 +97,7 @@ namespace SellLastHero
     // (see BattleRecorder's Raw class), so read the memory directly. Offsets are from the 26081909 dump.
     internal static unsafe class Raw
     {
-        private const int ReaderData = 0x10;          // DataReader<ShopData>._data
+        private const int ServiceDataOff = 0x10;      // Service<ShopData>: data @0x10 (ShopService.SellHero reads [this+0x10])
         private const int ShopHeroes = 0x10;          // ShopData.<HeroesForSale>
         private const int ListItems = 0x10, ListSize = 0x18, ArrayData = 0x20;
         private const int Stride = 0x648;             // Nullable<HeroChoice>: bool hasValue @0, HeroChoice @8 (0x640)
@@ -99,10 +106,11 @@ namespace SellLastHero
         private const int BaseCost = 0x638;           // HeroChoice._baseCost Nullable<int>: has @0, int @4
 
         // HeroChoice.Cost: baseCost, or (baseCost * (1 - discount)) truncated, discount being FP 16.16.
-        internal static int? CheapestHeroOffer(ShopReader shop)
+        internal static IntPtr ServiceData(ShopService svc) => *(IntPtr*)((byte*)svc.Pointer + ServiceDataOff);
+
+        internal static int? CheapestHeroOffer(IntPtr shopData)
         {
-            byte* data = *(byte**)((byte*)shop.Pointer + ReaderData);
-            if (data == null) return null;
+            byte* data = (byte*)shopData;
             byte* list = *(byte**)(data + ShopHeroes);
             if (list == null) return null;
             byte* items = *(byte**)(list + ListItems);
@@ -130,10 +138,10 @@ namespace SellLastHero
 
     internal static class Scope
     {
-        internal static void Enter(out SellContext prev, GameRegistryDataReader registry, ShopReader shop, HeroDragState state)
+        internal static void Enter(out SellContext prev, ShopService shop, HeroDragState state)
         {
             prev = SellContext.Current;
-            SellContext.Current = new SellContext { Registry = registry, ShopReader = shop, State = state };
+            SellContext.Current = new SellContext { Shop = shop, State = state };
         }
         internal static void Exit(SellContext prev) => SellContext.Current = prev;
     }
@@ -142,7 +150,7 @@ namespace SellLastHero
     internal static class BattleDragToDiscard
     {
         private static void Prefix(BattleHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
-            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+            Scope.Enter(out __state, __instance._shopService, __0);
         private static void Finalizer(SellContext __state) => Scope.Exit(__state);
     }
 
@@ -150,7 +158,7 @@ namespace SellLastHero
     internal static class BattlePointerUp
     {
         private static void Prefix(BattleHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
-            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+            Scope.Enter(out __state, __instance._shopService, __0);
         private static void Finalizer(SellContext __state) => Scope.Exit(__state);
     }
 
@@ -158,7 +166,7 @@ namespace SellLastHero
     internal static class ShopDragToDiscard
     {
         private static void Prefix(ShopHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
-            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+            Scope.Enter(out __state, __instance._shopService, __0);
         private static void Finalizer(SellContext __state) => Scope.Exit(__state);
     }
 
@@ -166,7 +174,7 @@ namespace SellLastHero
     internal static class ShopPointerUp
     {
         private static void Prefix(ShopHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
-            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+            Scope.Enter(out __state, __instance._shopService, __0);
         private static void Finalizer(SellContext __state) => Scope.Exit(__state);
     }
 
