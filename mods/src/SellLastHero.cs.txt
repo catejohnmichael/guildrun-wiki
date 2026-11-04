@@ -1,0 +1,184 @@
+using System;
+using HarmonyLib;
+using Il2CppEmber.Scopes.GameRun.GameRegistry.Data;
+using Il2CppEmber.Scopes.GameRun.GameRegistry.Data.Characters;
+using Il2CppEmber.Scopes.GameRun.InputHandling;
+using Il2CppEmber.Scopes.GameRun.RunSession.Data;
+using Il2CppEmber.Scopes.GameRun.Shop.Data;
+using Il2CppInterop.Runtime;
+using MelonLoader;
+using BattleHeroDrag = Il2CppEmber.Scopes.Battle.InputHandling.BattleHeroDragSubController;
+using ShopHeroDrag = Il2CppEmber.Scopes.GameRun.InputHandling.HeroDragSubController;
+
+[assembly: MelonInfo(typeof(SellLastHero.SellLastHeroMod), "SellLastHero", "1.0.0", "Claude (for John Cate)")]
+[assembly: MelonGame("Leyline", "Guildrun")]
+
+namespace SellLastHero
+{
+    // Lets you sell your last hero in the shop, e.g. to buy a different one.
+    //
+    // The game has no rule against it in ShopService.SellHero; the block is only in the drag-and-drop UI. Both hero
+    // drag controllers (BattleHeroDragSubController for the board, HeroDragSubController for the bottom/reserve panel)
+    // do, in DragToDiscard and again inlined in OnPointerUpSyncImpl:
+    //     if (_gameRegistryDataReader.OwnedHeroCount == 1) ShowSimpleDialog(CantSellOnlyHero...) else SellHero(id)
+    // So while one of those four methods runs, OwnedHeroCount reads 2 instead of 1 - nowhere else. No other caller of
+    // the getter gates anything (the hero picker and shop-buy calls only format log text).
+    //
+    // Safety: by default it only allows the sale during the Shop phase, and only if the gold you'd have afterwards
+    // covers the cheapest hero still on offer, so you can't strand yourself with no hero and no way to buy one.
+    // Otherwise the game's normal "can't sell your only hero" message shows.
+    public class SellLastHeroMod : MelonMod
+    {
+        internal static MelonLogger.Instance Log;
+        internal static MelonPreferences_Entry<bool> Enabled;
+        internal static MelonPreferences_Entry<bool> ShopOnly;
+        internal static MelonPreferences_Entry<bool> RequireAffordableHero;
+
+        public override void OnInitializeMelon()
+        {
+            Log = LoggerInstance;
+            var c = MelonPreferences.CreateCategory("SellLastHero");
+            Enabled = c.CreateEntry("Enabled", true, description: "On/off.");
+            ShopOnly = c.CreateEntry("ShopOnly", true, description: "Only allow it in the shop, not during placement.");
+            RequireAffordableHero = c.CreateEntry("RequireAffordableHero", true,
+                description: "Only allow it if gold after the sale buys a hero on offer.");
+        }
+
+        // Decide whether this sale of the only hero may go through. Called once per drop.
+        internal static bool Allow(SellContext ctx)
+        {
+            if (!Enabled.Value) return false;
+            try
+            {
+                var shop = ctx.ShopReader;
+                if (shop == null) { Log.Warning("no ShopReader; leaving the sale blocked"); return false; }
+
+                var flow = shop._runSessionReader.BattleFlowState.CurrentValue;
+                if (ShopOnly.Value && flow != BattleFlowState.Shop)
+                { Log.Msg($"last hero not sold: phase is {flow}, not Shop (ShopOnly=true)"); return false; }
+
+                if (!RequireAffordableHero.Value) { Log.Msg("selling last hero"); return true; }
+
+                var registry = ctx.Registry;
+                int gold = registry._playerReader.CurrentShards.CurrentValue;
+                var hero = registry.GetHeroData(ctx.State.DraggedHeroId)?.TryCast<HeroData>();
+                if (hero == null) { Log.Warning("could not read the hero being sold; leaving the sale blocked"); return false; }
+                int sell = shop.GetHeroSellPrice(hero.Rank);
+                int? cheapest = Raw.CheapestHeroOffer(shop);
+                if (cheapest == null)
+                { Log.Msg($"last hero not sold: no hero on offer to buy (gold {gold}, sells for {sell})"); return false; }
+                if (gold + sell < cheapest.Value)
+                { Log.Msg($"last hero not sold: gold {gold} + sale {sell} < cheapest hero {cheapest}"); return false; }
+
+                Log.Msg($"selling last hero (rank {hero.Rank}) for {sell}; gold {gold} -> {gold + sell}, cheapest hero {cheapest}");
+                return true;
+            }
+            catch (Exception ex) { Log.Error("check failed; leaving the sale blocked: " + ex); return false; }
+        }
+    }
+
+    internal sealed class SellContext
+    {
+        [ThreadStatic] internal static SellContext Current;
+        internal GameRegistryDataReader Registry;
+        internal ShopReader ShopReader;
+        internal HeroDragState State;
+        internal bool? Decision;       // OwnedHeroCount may be read more than once per drop; decide once.
+    }
+
+    // Raw reads: the shop's offers are List<Nullable<HeroChoice>>, and Il2CppInterop misreads Nullable<struct> layouts
+    // (see BattleRecorder's Raw class), so read the memory directly. Offsets are from the 26081909 dump.
+    internal static unsafe class Raw
+    {
+        private const int ReaderData = 0x10;          // DataReader<ShopData>._data
+        private const int ShopHeroes = 0x10;          // ShopData.<HeroesForSale>
+        private const int ListItems = 0x10, ListSize = 0x18, ArrayData = 0x20;
+        private const int Stride = 0x648;             // Nullable<HeroChoice>: bool hasValue @0, HeroChoice @8 (0x640)
+        private const int Value = 0x8;
+        private const int Discount = 0x628;           // HeroChoice.<DiscountAmount> Nullable<FP>: has @0, raw long @8
+        private const int BaseCost = 0x638;           // HeroChoice._baseCost Nullable<int>: has @0, int @4
+
+        // HeroChoice.Cost: baseCost, or (baseCost * (1 - discount)) truncated, discount being FP 16.16.
+        internal static int? CheapestHeroOffer(ShopReader shop)
+        {
+            byte* data = *(byte**)((byte*)shop.Pointer + ReaderData);
+            if (data == null) return null;
+            byte* list = *(byte**)(data + ShopHeroes);
+            if (list == null) return null;
+            byte* items = *(byte**)(list + ListItems);
+            int size = *(int*)(list + ListSize);
+            if (items == null || size <= 0) return null;
+
+            int stride = (int)IL2CPP.il2cpp_array_element_size(IL2CPP.il2cpp_object_get_class((IntPtr)items));
+            if (stride != Stride)
+                throw new InvalidOperationException($"Nullable<HeroChoice> is {stride:X} bytes, expected {Stride:X}; game changed");
+
+            int? best = null;
+            for (int i = 0; i < size; i++)
+            {
+                byte* e = items + ArrayData + i * Stride;
+                if (*e == 0) continue;                                 // sold-out slot
+                byte* hc = e + Value;
+                if (hc[BaseCost] == 0) continue;
+                long cost = *(int*)(hc + BaseCost + 4);
+                if (hc[Discount] != 0) cost = (cost * (0x10000L - *(long*)(hc + Discount + 8))) >> 16;
+                if (best == null || cost < best) best = (int)cost;
+            }
+            return best;
+        }
+    }
+
+    internal static class Scope
+    {
+        internal static void Enter(out SellContext prev, GameRegistryDataReader registry, ShopReader shop, HeroDragState state)
+        {
+            prev = SellContext.Current;
+            SellContext.Current = new SellContext { Registry = registry, ShopReader = shop, State = state };
+        }
+        internal static void Exit(SellContext prev) => SellContext.Current = prev;
+    }
+
+    [HarmonyPatch(typeof(BattleHeroDrag), nameof(BattleHeroDrag.DragToDiscard))]
+    internal static class BattleDragToDiscard
+    {
+        private static void Prefix(BattleHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
+            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+        private static void Finalizer(SellContext __state) => Scope.Exit(__state);
+    }
+
+    [HarmonyPatch(typeof(BattleHeroDrag), nameof(BattleHeroDrag.OnPointerUpSyncImpl))]
+    internal static class BattlePointerUp
+    {
+        private static void Prefix(BattleHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
+            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+        private static void Finalizer(SellContext __state) => Scope.Exit(__state);
+    }
+
+    [HarmonyPatch(typeof(ShopHeroDrag), nameof(ShopHeroDrag.DragToDiscard))]
+    internal static class ShopDragToDiscard
+    {
+        private static void Prefix(ShopHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
+            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+        private static void Finalizer(SellContext __state) => Scope.Exit(__state);
+    }
+
+    [HarmonyPatch(typeof(ShopHeroDrag), nameof(ShopHeroDrag.OnPointerUpSyncImpl))]
+    internal static class ShopPointerUp
+    {
+        private static void Prefix(ShopHeroDrag __instance, HeroDragState __0, out SellContext __state) =>
+            Scope.Enter(out __state, __instance._gameRegistryDataReader, __instance._shopReader, __0);
+        private static void Finalizer(SellContext __state) => Scope.Exit(__state);
+    }
+
+    [HarmonyPatch(typeof(GameRegistryDataReader), nameof(GameRegistryDataReader.OwnedHeroCount), MethodType.Getter)]
+    internal static class OwnedHeroCountPatch
+    {
+        private static void Postfix(ref int __result)
+        {
+            var ctx = SellContext.Current;
+            if (ctx == null || __result != 1) return;
+            ctx.Decision ??= SellLastHeroMod.Allow(ctx);
+            if (ctx.Decision == true) __result = 2;
+        }
+    }
+}
